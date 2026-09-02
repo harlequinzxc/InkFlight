@@ -13,11 +13,13 @@ interface PaperPreviewProps {
   layout: LayoutKind;
   size: PaperSize;
   fontScale: number;
+  /** thermal-print preview: desaturate the sheet on screen */
+  greyscale?: boolean;
   paperRef?: React.Ref<HTMLDivElement>;
 }
 
 /** Renders the paper at true mm size, scaled to fit the available width. */
-export default function PaperPreview({ doc, layout, size, fontScale, paperRef }: PaperPreviewProps) {
+export default function PaperPreview({ doc, layout, size, fontScale, greyscale, paperRef }: PaperPreviewProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const innerPaperRef = useRef<HTMLDivElement | null>(null);
   const [scale, setScale] = useState(0.5);
@@ -53,7 +55,7 @@ export default function PaperPreview({ doc, layout, size, fontScale, paperRef }:
   return (
     <div className="paper-viewport" ref={wrapRef}>
       <div className="paper-slot" style={{ height: paperH * scale, width: SIZE_MM[size].w * PX_PER_MM * scale }}>
-        <div className="paper-scale" style={{ width: SIZE_MM[size].w * PX_PER_MM, transform: `scale(${scale})` }}>
+        <div className="paper-scale" style={{ width: SIZE_MM[size].w * PX_PER_MM, transform: `scale(${scale})`, filter: greyscale ? 'grayscale(1)' : undefined }}>
           <Paper doc={doc} layout={layout} size={size} fontScale={fontScale} paperRef={mergedRef} />
         </div>
       </div>

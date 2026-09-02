@@ -727,13 +727,6 @@ body {
   letter-spacing: 0.02em;
   animation: fadePhase 0.5s ease both;
 }
-.interlude-sub {
-  font-size: 10.5px;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: var(--text-faint);
-}
-
 /* --------------------------------------------------------------------------
    Editor
    -------------------------------------------------------------------------- */
@@ -1111,6 +1104,13 @@ body {
 .eg-kvplain {
   font-style: normal !important;
   color: #3c465c !important;
+}
+.eg-wine {
+  font-style: normal !important;
+  color: #232a3a !important;
+}
+.eg-wine:first-of-type {
+  margin-top: calc(0.8mm * var(--sz));
 }
 
 .eg-footnote {

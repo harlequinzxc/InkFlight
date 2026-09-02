@@ -30,19 +30,33 @@ const PAGE = {
 const SERIF = 'Georgia';
 const SANS = 'Arial';
 
-function beverageLines(leg: LegSection): Array<{ head: string; body: string }> {
-  const lines: Array<{ head: string; body: string }> = [];
+/** Move a vintage to the front: "Cloudy Bay SB 2024, Marlborough" → "2024 Cloudy Bay SB, Marlborough". */
+function vintageFirst(name: string): string {
+  const m = /\b(19|20)\d{2}\b/.exec(name);
+  if (!m || m.index === 0) return name;
+  const year = m[0];
+  const rest = (name.slice(0, m.index) + name.slice(m.index + year.length))
+    .replace(/\s+,/g, ',')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/^[,\s]+/, '')
+    .trim();
+  return `${year} ${rest}`;
+}
+
+function beverageLines(leg: LegSection): Array<{ head: string; body: string; wine: boolean; items: string[] }> {
+  const lines: Array<{ head: string; body: string; wine: boolean; items: string[] }> = [];
   for (const cat of leg.beverages) {
     if (!cat.include) continue;
     const active = cat.groups.filter((g) => g.include && g.items.some((i) => i.include));
     const multi = active.length > 1;
+    const wine = /champagne|wine/i.test(cat.name);
     for (const g of active) {
-      const names = g.items.filter((i) => i.include).map((i) => i.name);
-      if (names.length === 0) continue;
-      // one group under the category → just the group name ("Champagne", "White");
-      // several groups → keep the category for context ("Champagne and Wine — Red")
+      const items = g.items.filter((i) => i.include);
+      if (items.length === 0) continue;
       const head = multi ? `${cat.name} — ${g.name}` : g.name !== cat.name ? g.name : cat.name;
-      lines.push({ head, body: names.join(', ') });
+      const wineNames = items.map((i) => vintageFirst([i.name, i.desc].filter(Boolean).join(', ')));
+      const plainNames = items.map((i) => i.name);
+      lines.push({ head, body: (wine ? wineNames : plainNames).join(', '), wine, items: wine ? wineNames : plainNames });
     }
   }
   return lines;
@@ -160,13 +174,20 @@ function elegantChildren(doc: MenuDoc): Paragraph[] {
 
         const bev = beverageLines(leg);
         const snacks = snackLines(leg);
-        const extras: Array<{ label: string; lines: Array<{ head: string; body: string }> }> = [];
+        const extras: Array<{ label: string; lines: Array<{ head: string; body: string; wine?: boolean; items?: string[] }> }> = [];
         if (bev.length > 0) extras.push({ label: 'Beverages', lines: bev });
         if (snacks.length > 0) extras.push({ label: 'Snacks', lines: snacks });
         if (leg.amenitiesOn && leg.amenities.length > 0) extras.push({ label: 'Amenities', lines: [{ head: '', body: leg.amenities.join(', ') }] });
         for (const ex of extras) {
           p({ alignment: AlignmentType.CENTER, spacing: { before: 90, after: 30 }, children: [new TextRun({ text: ex.label, font: SANS, italics: true, size: 19, color: '2B3245' })] });
           for (const line of ex.lines) {
+            if (line.wine) {
+              p({ alignment: AlignmentType.CENTER, spacing: { after: 10 }, children: [new TextRun({ text: line.head, font: SANS, size: 17, bold: true, color: NAVY })] });
+              for (const w of line.items ?? []) {
+                p({ alignment: AlignmentType.CENTER, spacing: { after: 10 }, children: [new TextRun({ text: w, font: SANS, size: 17, color: INK })] });
+              }
+              continue;
+            }
             const runs = line.head
               ? [new TextRun({ text: `${line.head} — `, font: SANS, size: 17, bold: true, color: NAVY }), new TextRun({ text: line.body, font: SANS, size: 17, color: INK })]
               : [new TextRun({ text: line.body, font: SANS, size: 17, color: INK })];
@@ -232,7 +253,16 @@ function compactChildren(doc: MenuDoc): Paragraph[] {
       if (bev.length > 0) {
         p({ spacing: { before: 60, after: 20 }, children: [new TextRun({ text: `${fc}${dest} ${cab.code} (BEVERAGES) ${dc}`, font: SANS, size: 19, bold: true, color: INK })] });
         for (const line of bev) {
-          p({ spacing: { after: 8 }, children: [new TextRun({ text: `${shortCourseLabel(line.head.split(' — ').pop() ?? line.head)}: `, font: SANS, size: 19, bold: true, color: INK }), new TextRun({ text: line.body.toUpperCase(), font: SANS, size: 19, color: INK })] });
+          const label = `${shortCourseLabel(line.head.split(' — ').pop() ?? line.head)}:`;
+          const names = line.wine ? line.items.map((w) => w.toUpperCase()) : [line.body.toUpperCase()];
+          const hang = Math.min(2600, Math.max(400, Math.round(label.length * 105)));
+          names.forEach((name, idx) => {
+            if (idx === 0) {
+              p({ indent: { left: hang, hanging: hang }, spacing: { after: 8 }, children: [new TextRun({ text: `${label} `, font: SANS, size: 19, bold: true, color: INK }), new TextRun({ text: name, font: SANS, size: 19, color: INK })] });
+            } else {
+              p({ indent: { left: hang }, spacing: { after: 8 }, children: [new TextRun({ text: name, font: SANS, size: 19, color: INK })] });
+            }
+          });
         }
       }
       for (const line of snackLines(leg)) {

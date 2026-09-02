@@ -10,14 +10,16 @@ interface EditorProps {
   layout: LayoutKind;
   size: PaperSize;
   fontScale: number;
+  greyscale: boolean;
   onLayout: (l: LayoutKind) => void;
   onSize: (s: PaperSize) => void;
   onFontScale: (f: number) => void;
+  onGreyscale: (g: boolean) => void;
   onBack: () => void;
   onToast: (msg: string, kind?: 'ok' | 'err') => void;
 }
 
-export default function Editor({ sheets, onSheetsChange, layout, size, fontScale, onLayout, onSize, onFontScale, onBack, onToast }: EditorProps) {
+export default function Editor({ sheets, onSheetsChange, layout, size, fontScale, greyscale, onLayout, onSize, onFontScale, onGreyscale, onBack, onToast }: EditorProps) {
   const paperRef = useRef<HTMLDivElement | null>(null);
   const [tab, setTab] = useState<'sheet' | 'edit'>('sheet');
   const [exportOpen, setExportOpen] = useState(false);
@@ -94,6 +96,9 @@ export default function Editor({ sheets, onSheetsChange, layout, size, fontScale
           <button type="button" className="noclick">{Math.round(fontScale * 100)}%</button>
           <button type="button" onClick={() => onFontScale(Math.min(1.2, Math.round((fontScale + 0.07) * 100) / 100))} aria-label="Bigger text">A+</button>
         </div>
+        <button type="button" className={`togglechip${greyscale ? ' on' : ''}`} onClick={() => onGreyscale(!greyscale)} aria-pressed={greyscale}>
+          {greyscale ? '✓' : ''} Greyscale
+        </button>
         <button type="button" className={`togglechip${doc.showDescriptions ? ' on' : ''}`} onClick={toggleDescriptions}>
           {doc.showDescriptions ? '✓' : ''} Descriptions
         </button>
@@ -108,7 +113,7 @@ export default function Editor({ sheets, onSheetsChange, layout, size, fontScale
 
       <div className={`ed-body ${tab === 'sheet' ? 'show-sheet' : 'show-edit'}`}>
         <div className="ed-sheetpane">
-          <PaperPreview key={idx} doc={doc} layout={layout} size={size} fontScale={fontScale} paperRef={paperRef} />
+          <PaperPreview key={idx} doc={doc} layout={layout} size={size} fontScale={fontScale} greyscale={greyscale} paperRef={paperRef} />
           <div className="ed-sheetfoot chrome">
             {multi ? `Sheet ${idx + 1} of ${sheets.length} · live preview (${size})` : `Live preview · exactly what will be exported (${size})`}
           </div>
@@ -125,6 +130,7 @@ export default function Editor({ sheets, onSheetsChange, layout, size, fontScale
         layout={layout}
         size={size}
         sheetTag={multi ? `S${idx + 1}` : undefined}
+        greyscale={greyscale}
         paperRef={paperRef}
         onToast={onToast}
       />

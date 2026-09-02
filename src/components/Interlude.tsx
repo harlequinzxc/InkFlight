@@ -5,35 +5,26 @@ interface InterludeProps {
 }
 
 /**
- * Full-screen fetch interlude with a *deliberate* fake delay so the copy is
- * readable: "Fetching menu from seat pocket..." (≥2 s) → "Almost there..." (≥1 s).
+ * Full-screen fetch interlude with a deliberate readable delay:
+ * "Fetching menu from seat pocket..." (2 s) → "Almost there…" (stays — never recycles).
  */
 export default function Interlude({ active }: InterludeProps) {
-  const [phase, setPhase] = useState(0);
+  const [almost, setAlmost] = useState(false);
 
   useEffect(() => {
     if (!active) {
-      setPhase(0);
+      setAlmost(false);
       return;
     }
-    const t1 = setTimeout(() => setPhase(1), 2000);
-    const t2 = setTimeout(() => setPhase(2), 3000);
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-    };
+    const t = setTimeout(() => setAlmost(true), 2000);
+    return () => clearTimeout(t);
   }, [active]);
-
-  if (!active) return null;
 
   return (
     <div className="interlude" role="status" aria-live="polite">
       <div className="interlude-inner">
         <div className="ring" />
-        <div className="interlude-copy" key={phase}>
-          {phase === 0 ? 'Fetching menu from seat pocket…' : 'Almost there…'}
-        </div>
-        <div className="interlude-sub">SQ inflight menu service</div>
+        <div className="interlude-copy">{almost ? 'Almost there…' : 'Fetching menu from seat pocket…'}</div>
       </div>
     </div>
   );

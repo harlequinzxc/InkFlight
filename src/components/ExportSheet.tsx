@@ -10,11 +10,12 @@ interface ExportSheetProps {
   layout: LayoutKind;
   size: PaperSize;
   sheetTag?: string;
+  greyscale?: boolean;
   paperRef: React.RefObject<HTMLDivElement | null>;
   onToast: (msg: string, kind?: 'ok' | 'err') => void;
 }
 
-export default function ExportSheet({ open, onClose, doc, layout, size, sheetTag, paperRef, onToast }: ExportSheetProps) {
+export default function ExportSheet({ open, onClose, doc, layout, size, sheetTag, greyscale, paperRef, onToast }: ExportSheetProps) {
   const [format, setFormat] = useState<ImageFormat>('png');
   const [hiRes, setHiRes] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -47,7 +48,8 @@ export default function ExportSheet({ open, onClose, doc, layout, size, sheetTag
       await exportPaperImage(node, {
         format,
         scale: hiRes ? 3 : 2,
-        filename: fname
+        filename: fname,
+        greyscale
       });
       onToast(`${format.toUpperCase()} saved — check your downloads.`);
     } catch (err) {

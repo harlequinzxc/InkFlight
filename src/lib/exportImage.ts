@@ -4,7 +4,7 @@ export type ImageFormat = 'png' | 'jpeg';
 
 export async function exportPaperImage(
   node: HTMLElement,
-  opts: { format: ImageFormat; scale?: number; filename: string }
+  opts: { format: ImageFormat; scale?: number; filename: string; greyscale?: boolean }
 ): Promise<void> {
   const { format, filename } = opts;
   const scale = opts.scale ?? 2;
@@ -24,6 +24,19 @@ export async function exportPaperImage(
     useCORS: false,
     allowTaint: false
   });
+
+  if (opts.greyscale) {
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const d = img.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const y = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+        d[i] = d[i + 1] = d[i + 2] = y;
+      }
+      ctx.putImageData(img, 0, 0);
+    }
+  }
 
   const mime = format === 'png' ? 'image/png' : 'image/jpeg';
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, mime, format === 'jpeg' ? 0.92 : undefined));

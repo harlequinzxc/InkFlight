@@ -45,21 +45,37 @@ function joinNames(names: string[]): string {
   return names.join(', ');
 }
 
-/** {head:"Champagne and Wine — White", body:"Cloudy Bay, Kistler"} flattened drink lines */
-function beverageLines(leg: LegSection): Array<{ head: string; body: string }> {
-  const lines: Array<{ head: string; body: string }> = [];
+/** Move a vintage to the front: "Cloudy Bay SB 2024, Marlborough" → "2024 Cloudy Bay SB, Marlborough". */
+function vintageFirst(name: string): string {
+  const m = /\b(19|20)\d{2}\b/.exec(name);
+  if (!m || m.index === 0) return name;
+  const year = m[0];
+  const rest = (name.slice(0, m.index) + name.slice(m.index + year.length))
+    .replace(/\s+,/g, ',')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/^[,\s]+/, '')
+    .trim();
+  return `${year} ${rest}`;
+}
+
+/** Flattened drink lines. Wine rows carry their items individually — every
+ *  line starts with the vintage year, one wine per line. */
+function beverageLines(leg: LegSection): Array<{ head: string; body: string; wine: boolean; items: string[] }> {
+  const lines: Array<{ head: string; body: string; wine: boolean; items: string[] }> = [];
   for (const cat of leg.beverages) {
     if (!cat.include) continue;
     const activeGroups = cat.groups.filter((g) => g.include && g.items.some((i) => i.include));
     if (activeGroups.length === 0) continue;
     const multi = activeGroups.length > 1;
+    const wine = /champagne|wine/i.test(cat.name);
     for (const g of activeGroups) {
-      const names = g.items.filter((i) => i.include).map((i) => i.name);
-      if (names.length === 0) continue;
-      // one group under the category → just the group name ("Champagne", "White");
-      // several groups → keep the category for context ("Champagne and Wine — Red")
+      const items = g.items.filter((i) => i.include);
+      if (items.length === 0) continue;
       const head = multi ? `${cat.name} — ${g.name}` : g.name !== cat.name ? g.name : cat.name;
-      lines.push({ head, body: joinNames(names) });
+      // wine: full name + region, vintage leading, one per line
+      const wineNames = items.map((i) => vintageFirst([i.name, i.desc].filter(Boolean).join(', ')));
+      const plainNames = items.map((i) => i.name);
+      lines.push({ head, body: joinNames(wine ? wineNames : plainNames), wine, items: wine ? wineNames : plainNames });
     }
   }
   return lines;
@@ -127,7 +143,8 @@ function flightCode(doc: MenuDoc): string {
 function ElegantBeverageRows({ leg }: { leg: LegSection }) {
   const bev = beverageLines(leg);
   const snacks = snackLines(leg);
-  const rows: Array<{ label: string; lines: Array<{ head: string; body: string }> }> = [];
+  const rows: Array<{ label: string; lines: Array<{ head: string; body: string; wine?: boolean; items?: string[] }> }> = [];
+
   if (bev.length > 0) rows.push({ label: 'Beverages', lines: bev });
   if (snacks.length > 0) rows.push({ label: 'Snacks', lines: snacks });
   if (leg.amenitiesOn && leg.amenities.length > 0) rows.push({ label: 'Amenities', lines: [{ head: '', body: joinNames(leg.amenities) }] });
@@ -139,18 +156,27 @@ function ElegantBeverageRows({ leg }: { leg: LegSection }) {
           <div className="eg-label">{row.label}</div>
           <div className="eg-marker"><i /></div>
           <div className="eg-dishes">
-            {row.lines.map((line, i) => (
-              <div className="eg-item eg-kv" key={i}>
-                {line.head ? (
-                  <>
-                    <b>{line.head}</b>
-                    <em>{line.body}</em>
-                  </>
-                ) : (
-                  <em className="eg-kvplain">{line.body}</em>
-                )}
-              </div>
-            ))}
+            {row.lines.map((line, i) =>
+              line.wine ? (
+                <div className="eg-item eg-kv" key={i}>
+                  <b>{line.head}</b>
+                  {line.items?.map((w, j) => (
+                    <em className="eg-wine" key={j}>{w}</em>
+                  ))}
+                </div>
+              ) : (
+                <div className="eg-item eg-kv" key={i}>
+                  {line.head ? (
+                    <>
+                      <b>{line.head}</b>
+                      <em>{line.body}</em>
+                    </>
+                  ) : (
+                    <em className="eg-kvplain">{line.body}</em>
+                  )}
+                </div>
+              )
+            )}
           </div>
         </div>
       ))}
@@ -305,9 +331,13 @@ function CompactPaper({ doc }: { doc: MenuDoc }) {
               {bev.length > 0 && (
                 <div className="cx-block">
                   <div className="cx-head">{fc}{dest} {cab.code} (BEVERAGES) {dc}</div>
-                  {bev.map((line, i) => (
-                    <CompactCourse key={i} label={shortCourseLabel(line.head.split(' — ').pop() ?? line.head)} names={[line.body]} />
-                  ))}
+                  {bev.map((line, i) =>
+                    line.wine ? (
+                      <CompactCourse key={i} label={shortCourseLabel(line.head.split(' — ').pop() ?? line.head)} names={line.items.map((w) => w.toUpperCase())} />
+                    ) : (
+                      <CompactCourse key={i} label={shortCourseLabel(line.head.split(' — ').pop() ?? line.head)} names={[line.body]} />
+                    )
+                  )}
                 </div>
               )}
 

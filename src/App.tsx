@@ -14,12 +14,14 @@ interface Prefs {
   layout: LayoutKind;
   size: PaperSize;
   fontScale: number;
+  /** thermal-print mode: render the sheet in greyscale (default ON) */
+  greyscale: boolean;
 }
 
 const PREFS_KEY = 'inkflight.prefs';
 const DOC_KEY = 'inkflight.doc';
 
-const DEFAULT_PREFS: Prefs = { layout: 'elegant', size: 'A4', fontScale: 1 };
+const DEFAULT_PREFS: Prefs = { layout: 'elegant', size: 'A4', fontScale: 1, greyscale: true };
 
 function loadJSON<T>(key: string): T | null {
   try {
@@ -386,9 +388,11 @@ export default function App() {
           layout={prefs.layout}
           size={prefs.size}
           fontScale={prefs.fontScale}
+          greyscale={prefs.greyscale}
           onLayout={(l) => setPrefs((p) => ({ ...p, layout: l }))}
           onSize={(s) => setPrefs((p) => ({ ...p, size: s }))}
           onFontScale={(f) => setPrefs((p) => ({ ...p, fontScale: f }))}
+          onGreyscale={(g) => setPrefs((p) => ({ ...p, greyscale: g }))}
           onBack={goBackFromEditor}
           onToast={showToast}
         />
