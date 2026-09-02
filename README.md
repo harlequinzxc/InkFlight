@@ -20,7 +20,7 @@ print-ready menu sheet — **A4 for the galley, A6 for the jacket pocket**.
 | ✍️ **Full editor** | Tap any text to edit; per-item include/hide; delete & add dishes; live preview |
 | 🎴 **Two layouts** | *Elegant* — fancy-restaurant single sheet · *Compact* — minimal gaps, one-look |
 | 📄 **A4 & A6** | True-to-size paper, export as **PNG / JPEG** or **.docx**, plus direct print |
-| 🛫 **Multi-sector aware** | Sectors, parallel menu selections (e.g. International vs kaiseki), choose-N courses, beverages, snacks, amenities, service banners |
+| 🛫 **Multi-sector aware** | Sector, cabin & multi-sector runs: SQ 11/12, 25/26, 377/378, 478/479 get a **sector multi-select** — each sector is printed as its own sheet with all chosen cabins |
 | 📱 **Installable** | PWA on Android, iOS (Add to Home Screen) and desktop; offline shell via service worker |
 | 💾 **Resilient** | Typed errors, stale-cache fallback ("offline copy · may be outdated"), nothing ever fabricated |
 
@@ -77,9 +77,21 @@ npm run dev:mock   # SQ_API_BASE=mock — serves demo menus from src/lib/sq-mock
 ```
 
 Demo rules: flight `999` or any date beyond 8 days → “no flight found”; flight `200`
-→ only YCL/SCL cabins; YCL cabin → snack-bag sector; other flights → a two-sector
-menu. `scripts/mock-upstream.mjs` additionally simulates the raw *HTTP-level*
+→ only YCL/SCL cabins; YCL cabin → snack-bag sector; flights `11`, `25`, `378`,
+`478` (and their return numbers) → the **sector picker** appears after the cabin
+check, and each sector becomes its own editor sheet.
+`scripts/mock-upstream.mjs` additionally simulates the raw *HTTP-level*
 upstream for contract tests.
+
+### Multi-sector services
+
+`src/lib/routes.ts` maps the known two-sector flights (SQ 11/12 · 25/26 · 377/378 ·
+478/479) to display labels for the pre-fetch picker. After the menu arrives, sheet
+titles come from the **live leg data** (`departureCityName → arrivalCityName`), so a
+schedule or station change still renders truthfully — the table is a hint, never a
+source of truth. Each selected sector compiles to its own sheet showing all chosen
+cabins; the editor shows a sheet pager and exports are tagged `-S1`, `-S2`, …
+
 
 ```bash
 npm run build      # production build + PWA manifest/service worker

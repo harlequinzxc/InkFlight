@@ -6,6 +6,7 @@ import Editor from './views/Editor';
 import { ApiFailure, fetchCabins, fetchMenu } from './lib/api';
 import { addDaysISO, daysBetweenISO, normalizeFlight, prettyDate, todayISO } from './lib/flight';
 import { buildDoc } from './lib/normalize';
+import { sectorPlanFor, type SectorInfo } from './lib/routes';
 import { CABIN_ORDER, type CabinCode, type CabinOption, type LayoutKind, type MenuDoc, type PaperSize } from './lib/types';
 
 type View = 'landing' | 'search' | 'editor';
@@ -38,6 +39,13 @@ function saveJSON(key: string, value: unknown): void {
   }
 }
 
+/** Stored docs may be a legacy single MenuDoc or a MenuDoc[]. */
+function loadDocs(): MenuDoc[] {
+  const raw = loadJSON<MenuDoc | MenuDoc[]>(DOC_KEY);
+  if (!raw) return [];
+  return Array.isArray(raw) ? raw : [raw];
+}
+
 const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 export default function App() {
@@ -54,6 +62,8 @@ export default function App() {
   const [checkState, setCheckState] = useState<CheckState>('idle');
   const [cabinOptions, setCabinOptions] = useState<CabinOption[]>([]);
   const [selectedCabins, setSelectedCabins] = useState<CabinCode[]>([]);
+  const [availableSectors, setAvailableSectors] = useState<SectorInfo[] | null>(null);
+  const [selectedSectors, setSelectedSectors] = useState<number[]>([]);
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
   const [staleNotice, setStaleNotice] = useState(false);
   const [fetching, setFetching] = useState(false);
@@ -61,8 +71,8 @@ export default function App() {
 
   // ---- editor state ----
   const [prefs, setPrefs] = useState<Prefs>(() => ({ ...DEFAULT_PREFS, ...loadJSON<Partial<Prefs>>(PREFS_KEY) }));
-  const [doc, setDoc] = useState<MenuDoc | null>(() => loadJSON<MenuDoc>(DOC_KEY));
-  const [resume, setResume] = useState<boolean>(() => loadJSON<MenuDoc>(DOC_KEY) !== null);
+  const [docs, setDocs] = useState<MenuDoc[]>(() => loadDocs());
+  const [resume, setResume] = useState<boolean>(() => loadDocs().length > 0);
 
   const [toast, setToast] = useState<{ msg: string; kind: 'ok' | 'err' } | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
@@ -91,48 +101,33 @@ export default function App() {
   // ---------- persistence ----------
   useEffect(() => saveJSON(PREFS_KEY, prefs), [prefs]);
   useEffect(() => {
-    if (doc) {
-      saveJSON(DOC_KEY, doc);
+    if (docs.length > 0) {
+      saveJSON(DOC_KEY, docs);
       setResume(true);
     }
-  }, [doc]);
+  }, [docs]);
 
   // ---------- toast ----------
   const showToast = useCallback((msg: string, kind: 'ok' | 'err' = 'ok'): void => {
     setToast({ msg, kind });
     window.clearTimeout(toastTimer.current);
-    toastTimer.current = window.setTimeout(() => setToast(null), 3200);
+    toastTimer.current = window.setTimeout(() => setToast(null), 3600);
   }, []);
 
-  // ---------- cabin check (Gate 2) — explicit submit only ----------
-  const discardCheck = useCallback((): void => {
-    checkAbortRef.current?.abort();
+  // ---------- cabin check (Gate 2) — auto after flight + date ----------
+  const resetResults = useCallback((): void => {
     setCheckState('idle');
     setError(null);
     setCabinOptions([]);
     setSelectedCabins([]);
+    setAvailableSectors(null);
+    setSelectedSectors([]);
     setStaleNotice(false);
   }, []);
 
-  const runCheck = useCallback(async (flight: string, date: string, token: number, signal: AbortSignal): Promise<void> => {
-    setCheckState('checking');
-    setError(null);
-    setStaleNotice(false);
-    setCabinOptions([]);
-    setSelectedCabins([]);
-    try {
-      const { data, stale, mode } = await fetchCabins(flight, date, signal);
-      if (token !== fetchTokenRef.current) return;
-      setApiMode(mode);
-      setCabinOptions(data.cabins);
-      setCheckState('ok');
-      setStaleNotice(stale);
-    } catch (err) {
-      if (token !== fetchTokenRef.current) return;
-      if (err instanceof DOMException && err.name === 'AbortError') return; // superseded — ignore stale response
-      setCheckState('error');
-      setError(err instanceof ApiFailure ? { code: err.code, message: err.message } : { code: 'UPSTREAM_HTTP', message: 'Something went wrong. Try again.' });
-    }
+  const outOfWindow = useCallback((date: string): boolean => {
+    const shift = daysBetweenISO(todayISO(), date);
+    return shift < 0 || shift > 8;
   }, []);
 
   const windowErrorFor = useCallback((date: string): { code: string; message: string } => {
@@ -142,13 +137,49 @@ export default function App() {
     };
   }, []);
 
-  const outOfWindow = useCallback((date: string): boolean => {
-    const shift = daysBetweenISO(todayISO(), date);
-    return shift < 0 || shift > 8;
+  const runCheck = useCallback((flight: string, date: string, token: number, signal: AbortSignal): void => {
+    setCheckState('checking');
+    setError(null);
+    setStaleNotice(false);
+    setCabinOptions([]);
+    setSelectedCabins([]);
+    fetchCabins(flight, date, signal)
+      .then(({ data, stale, mode }) => {
+        if (token !== fetchTokenRef.current) return;
+        setApiMode(mode);
+        setCabinOptions(data.cabins);
+        setCheckState('ok');
+        setStaleNotice(stale);
+        // multi-sector services get a sector picker (multi-select)
+        const plan = sectorPlanFor(flight);
+        if (plan) {
+          setAvailableSectors(plan);
+          setSelectedSectors(plan.map((s) => s.seq)); // default: whole run
+        }
+      })
+      .catch((err: unknown) => {
+        if (token !== fetchTokenRef.current) return;
+        if (err instanceof DOMException && err.name === 'AbortError') return; // superseded
+        setCheckState('error');
+        setError(
+          err instanceof ApiFailure
+            ? { code: err.code, message: err.message }
+            : { code: 'UPSTREAM_HTTP', message: 'Something went wrong. Try again.' }
+        );
+      });
   }, []);
 
-  /** Gate 1 + window offline, then ONE network call. Triggered automatically
-   *  as soon as both inputs are valid — no submit button. */
+  const launchCheck = useCallback(
+    (flight: string, date: string): void => {
+      checkAbortRef.current?.abort();
+      const ctrl = new AbortController();
+      checkAbortRef.current = ctrl;
+      const token = ++fetchTokenRef.current;
+      runCheck(flight, date, token, ctrl.signal);
+    },
+    [runCheck]
+  );
+
   const triggerCheck = useCallback(
     (flight: string, date: string): void => {
       const gate = normalizeFlight(flight);
@@ -159,13 +190,46 @@ export default function App() {
         setError(windowErrorFor(date));
         return;
       }
-      checkAbortRef.current?.abort();
-      const ctrl = new AbortController();
-      checkAbortRef.current = ctrl;
-      const token = ++fetchTokenRef.current;
-      void runCheck(gate.value, date, token, ctrl.signal);
+      launchCheck(gate.value, date);
     },
-    [checkState, fetching, outOfWindow, runCheck, windowErrorFor]
+    [checkState, fetching, launchCheck, outOfWindow, windowErrorFor]
+  );
+
+  const pickDate = useCallback(
+    (iso: string): void => {
+      setDateISO(iso);
+      // results are per flight+date pair — any change discards them instantly;
+      // if the flight is already valid, check the NEW date automatically.
+      const gate = normalizeFlight(flightInput);
+      resetResults();
+      if (!gate.ok) return;
+      if (outOfWindow(iso)) {
+        checkAbortRef.current?.abort();
+        setCheckState('error');
+        setError(windowErrorFor(iso));
+        return;
+      }
+      launchCheck(gate.value, iso);
+    },
+    [flightInput, launchCheck, outOfWindow, resetResults, windowErrorFor]
+  );
+
+  const checkTimerRef = useRef<number | undefined>(undefined);
+
+  const onFlightInput = useCallback(
+    (v: string): void => {
+      setFlightInput(v);
+      resetResults();
+      window.clearTimeout(checkTimerRef.current);
+      // if a date is already chosen, re-check automatically — debounced,
+      // never per keystroke
+      const gate = normalizeFlight(v);
+      if (gate.ok && dateISO && !outOfWindow(dateISO)) {
+        const date = dateISO;
+        checkTimerRef.current = window.setTimeout(() => launchCheck(gate.value, date), 650);
+      }
+    },
+    [dateISO, launchCheck, outOfWindow, resetResults]
   );
 
   /** Enter key / Retry — bypasses the debounce. */
@@ -175,75 +239,26 @@ export default function App() {
     triggerCheck(gate.value, dateISO);
   }, [flightInput, dateISO, checkState, fetching, triggerCheck]);
 
-  const pickDate = useCallback(
-    (iso: string): void => {
-      setDateISO(iso);
-      // results are per flight+date pair — any change discards them instantly;
-      // if the flight is already valid, check the NEW date automatically.
-      const gate = normalizeFlight(flightInput);
-      setCheckState('idle');
-      setError(null);
-      setCabinOptions([]);
-      setSelectedCabins([]);
-      setStaleNotice(false);
-      if (!gate.ok) return;
-      if (outOfWindow(iso)) {
-        checkAbortRef.current?.abort();
-        setCheckState('error');
-        setError(windowErrorFor(iso));
-        return;
-      }
-      checkAbortRef.current?.abort();
-      const ctrl = new AbortController();
-      checkAbortRef.current = ctrl;
-      const token = ++fetchTokenRef.current;
-      void runCheck(gate.value, iso, token, ctrl.signal);
-    },
-    [flightInput, outOfWindow, runCheck, windowErrorFor]
-  );
-
-  const checkTimerRef = useRef<number | undefined>(undefined);
-
-  const onFlightInput = useCallback(
-    (v: string): void => {
-      setFlightInput(v);
-      // results are per flight+date pair — discard instantly on change
-      setCheckState('idle');
-      setError(null);
-      setCabinOptions([]);
-      setSelectedCabins([]);
-      setStaleNotice(false);
-      window.clearTimeout(checkTimerRef.current);
-      // if a date is already chosen, re-check automatically — debounced,
-      // never per keystroke
-      const gate = normalizeFlight(v);
-      if (gate.ok && dateISO && !outOfWindow(dateISO)) {
-        const date = dateISO;
-        checkTimerRef.current = window.setTimeout(() => {
-          checkAbortRef.current?.abort();
-          const ctrl = new AbortController();
-          checkAbortRef.current = ctrl;
-          const token = ++fetchTokenRef.current;
-          void runCheck(gate.value, date, token, ctrl.signal);
-        }, 650);
-      }
-    },
-    [dateISO, outOfWindow, runCheck]
-  );
-
   const toggleCabin = useCallback((c: CabinCode): void => {
     setSelectedCabins((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : CABIN_ORDER.filter((x) => prev.includes(x) || x === c)));
+  }, []);
+
+  const toggleSector = useCallback((seq: number): void => {
+    setSelectedSectors((prev) => (prev.includes(seq) ? prev.filter((x) => x !== seq) : prev.includes(seq) ? prev : [...prev, seq].sort((a, b) => a - b)));
   }, []);
 
   // ---------- fetch menus (Gate 3) + interlude ----------
   const startFetch = useCallback(async (): Promise<void> => {
     const gate = normalizeFlight(flightInput);
     if (!gate.ok || !dateISO || selectedCabins.length === 0 || fetching) return;
+    const plan = availableSectors;
+    const sectorMode = plan !== null && plan.length > 1 && selectedSectors.length > 0;
+    if (sectorMode && selectedSectors.length === 0) return;
     setFetching(true);
     setInterlude(true);
     setError(null);
 
-    const work = (async (): Promise<MenuDoc> => {
+    const work = (async (): Promise<MenuDoc[]> => {
       const settled = await Promise.allSettled(
         selectedCabins.map(async (cabin) => {
           const key = `SQ${gate.value}:${dateISO}:${cabin}`;
@@ -268,10 +283,30 @@ export default function App() {
       }
 
       const rawByCabin = fulfilled.map((s) => ({ cabin: s.value.cabin, payload: s.value.payload }));
-      return buildDoc({ flightNumber: gate.value, flightDate: dateISO }, rawByCabin);
+
+      if (!sectorMode) return [buildDoc({ flightNumber: gate.value, flightDate: dateISO }, rawByCabin)];
+
+      // one sheet per selected sector — each shows every selected cabin
+      const sheets: MenuDoc[] = [];
+      const missing: string[] = [];
+      for (const seq of selectedSectors) {
+        const sheet = buildDoc({ flightNumber: gate.value, flightDate: dateISO }, rawByCabin, seq - 1);
+        if (sheet.cabins.length === 0) {
+          missing.push(plan![seq - 1]?.label ?? `Sector ${seq}`);
+          continue;
+        }
+        sheets.push(sheet);
+      }
+      if (missing.length > 0) {
+        showToast(`Not in today's menu data: ${missing.join(', ')} — those sectors were skipped.`);
+      }
+      if (sheets.length === 0) {
+        throw new ApiFailure({ code: 'NO_CABINS', message: 'The menu service returned no sectors for that flight and date. Try again closer to departure.' });
+      }
+      return sheets;
     })();
 
-    let built: MenuDoc | null = null;
+    let built: MenuDoc[] | null = null;
     let failure: unknown = null;
     try {
       built = await work;
@@ -284,7 +319,7 @@ export default function App() {
     setInterlude(false);
     setFetching(false);
 
-    if (failure !== null || built === null) {
+    if (failure !== null || built === null || built.length === 0) {
       setCheckState('error');
       setError(
         failure instanceof ApiFailure
@@ -293,14 +328,19 @@ export default function App() {
       );
       return;
     }
-    setDoc(built);
-    const params = new URLSearchParams({ flight: gate.value, date: dateISO, cabin: selectedCabins.join(',') });
+    setDocs(built);
+    const params = new URLSearchParams({
+      flight: gate.value,
+      date: dateISO,
+      cabin: selectedCabins.join(','),
+      ...(sectorMode ? { sector: selectedSectors.join(',') } : {})
+    });
     navigate('editor', true, `?${params.toString()}`);
-  }, [flightInput, dateISO, selectedCabins, fetching, navigate, showToast]);
+  }, [flightInput, dateISO, selectedCabins, selectedSectors, availableSectors, fetching, navigate, showToast]);
 
   // ---------- doc editing ----------
-  const onDocChange = useCallback((next: MenuDoc): void => {
-    setDoc(next);
+  const onSheetsChange = useCallback((next: MenuDoc[]): void => {
+    setDocs(next);
   }, []);
 
   const goBackFromEditor = useCallback((): void => {
@@ -313,9 +353,9 @@ export default function App() {
   }, [navigate]);
 
   const resumeLast = useCallback((): void => {
-    const saved = loadJSON<MenuDoc>(DOC_KEY);
-    if (saved) {
-      setDoc(saved);
+    const saved = loadDocs();
+    if (saved.length > 0) {
+      setDocs(saved);
       navigate('editor');
     } else {
       setResume(false);
@@ -325,7 +365,15 @@ export default function App() {
   return (
     <div className="app-shell">
       {view === 'landing' && (
-        <Landing onProceed={proceedFromLanding} resume={resume && doc ? { label: `${doc.flightLabel} · ${doc.dateLabel}` } : null} onResume={resumeLast} />
+        <Landing
+          onProceed={proceedFromLanding}
+          resume={
+            resume && docs.length > 0
+              ? { label: `${docs[0].flightLabel} · ${docs[0].dateLabel}${docs.length > 1 ? ` · ${docs.length} sheets` : ''}` }
+              : null
+          }
+          onResume={resumeLast}
+        />
       )}
 
       {view === 'search' && (
@@ -338,6 +386,9 @@ export default function App() {
           cabinOptions={cabinOptions}
           selectedCabins={selectedCabins}
           onToggleCabin={toggleCabin}
+          availableSectors={availableSectors}
+          selectedSectors={selectedSectors}
+          onToggleSector={toggleSector}
           error={error}
           staleNotice={staleNotice}
           onSubmitCheck={submitCheck}
@@ -348,10 +399,10 @@ export default function App() {
         />
       )}
 
-      {view === 'editor' && doc && (
+      {view === 'editor' && docs.length > 0 && (
         <Editor
-          doc={doc}
-          onDocChange={onDocChange}
+          sheets={docs}
+          onSheetsChange={onSheetsChange}
           layout={prefs.layout}
           size={prefs.size}
           fontScale={prefs.fontScale}

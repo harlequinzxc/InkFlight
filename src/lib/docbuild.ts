@@ -61,6 +61,7 @@ function elegantChildren(doc: MenuDoc): Paragraph[] {
 
   p({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: 'SINGAPORE AIRLINES', font: SANS, size: 15, color: GOLD, characterSpacing: 60 })] });
   p({ alignment: AlignmentType.CENTER, spacing: { before: 60, after: 20 }, children: [new TextRun({ text: doc.flightLabel, font: SERIF, size: 52, bold: true, color: NAVY })] });
+  if (doc.sheetTitle) p({ alignment: AlignmentType.CENTER, spacing: { after: 10 }, children: [new TextRun({ text: doc.sheetTitle.toUpperCase(), font: SANS, size: 19, bold: true, color: GOLD, characterSpacing: 40 })] });
   p({ alignment: AlignmentType.CENTER, spacing: { after: 20 }, children: [new TextRun({ text: doc.dateLabel, font: SANS, size: 17, color: GREY })] });
   if (doc.headerNote) p({ alignment: AlignmentType.CENTER, spacing: { after: 40 }, children: [new TextRun({ text: doc.headerNote, font: SERIF, italics: true, size: 17, color: GREY })] });
   smallRule();
@@ -193,7 +194,8 @@ function compactChildren(doc: MenuDoc): Paragraph[] {
     shading: { fill: NAVY },
     children: [
       new TextRun({ text: ` ${doc.flightLabel}`, font: SANS, size: 22, bold: true, color: 'FFFFFF' }),
-      new TextRun({ text: `   ·   ${doc.dateLabel} `, font: SANS, size: 16, color: GOLD_SOFT })
+      new TextRun({ text: `   ·   ${doc.dateLabel} `, font: SANS, size: 16, color: GOLD_SOFT }),
+      ...(doc.sheetTitle ? [new TextRun({ text: `   ·   ${doc.sheetTitle} `, font: SANS, size: 16, color: GOLD_SOFT })] : [])
     ]
   });
   if (doc.headerNote) p({ spacing: { after: 40 }, children: [new TextRun({ text: doc.headerNote, font: SANS, size: 13, italics: true, color: GREY })] });

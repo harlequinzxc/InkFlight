@@ -9,11 +9,12 @@ interface ExportSheetProps {
   doc: MenuDoc;
   layout: LayoutKind;
   size: PaperSize;
+  sheetTag?: string;
   paperRef: React.RefObject<HTMLDivElement | null>;
   onToast: (msg: string, kind?: 'ok' | 'err') => void;
 }
 
-export default function ExportSheet({ open, onClose, doc, layout, size, paperRef, onToast }: ExportSheetProps) {
+export default function ExportSheet({ open, onClose, doc, layout, size, sheetTag, paperRef, onToast }: ExportSheetProps) {
   const [format, setFormat] = useState<ImageFormat>('png');
   const [hiRes, setHiRes] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -41,11 +42,12 @@ export default function ExportSheet({ open, onClose, doc, layout, size, paperRef
       slot.style.width = 'auto';
       slot.style.height = 'auto';
     }
+    const fname = sheetTag ? imageFilename(doc, layout, size, format).replace(/(\.\w+)$/, `-${sheetTag}$1`) : imageFilename(doc, layout, size, format);
     try {
       await exportPaperImage(node, {
         format,
         scale: hiRes ? 3 : 2,
-        filename: imageFilename(doc, layout, size, format)
+        filename: fname
       });
       onToast(`${format.toUpperCase()} saved — check your downloads.`);
     } catch (err) {
@@ -64,7 +66,8 @@ export default function ExportSheet({ open, onClose, doc, layout, size, paperRef
     setBusy('docx');
     try {
       const blob = await buildDocx(doc, layout, size);
-      triggerDownload(URL.createObjectURL(blob), docxFilename(doc, layout, size));
+      const base = docxFilename(doc, layout, size);
+      triggerDownload(URL.createObjectURL(blob), sheetTag ? base.replace(/(\.docx)$/, `-${sheetTag}$1`) : base);
       onToast('Word document saved — check your downloads.');
     } catch (err) {
       onToast(err instanceof Error ? err.message : 'Export failed.', 'err');

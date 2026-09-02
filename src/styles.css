@@ -379,6 +379,62 @@ body {
   text-align: center;
 }
 
+.sectors-wrap {
+  margin-top: 26px;
+}
+.ed-count {
+  color: var(--text-dim);
+  font-weight: 500;
+  font-size: 12px;
+}
+.sheet-pager {
+  display: flex;
+  gap: 8px;
+  padding: 10px 14px 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.sheet-pager::-webkit-scrollbar {
+  display: none;
+}
+.pager-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 999px;
+  padding: 8px 14px 8px 8px;
+  color: var(--cream);
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  flex: none;
+}
+.pager-num {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(201, 162, 75, 0.16);
+  color: var(--gold-bright);
+  font-size: 11px;
+  font-weight: 800;
+}
+.pager-pill.on {
+  border-color: #e9cd82;
+  background: linear-gradient(160deg, rgba(233, 205, 130, 0.18), rgba(201, 162, 75, 0.07));
+}
+.pager-name {
+  max-width: 40vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .checking {
   display: flex;
   align-items: center;
@@ -1207,6 +1263,16 @@ body {
   font-weight: 600;
   color: #e9cd82;
   text-align: right;
+}
+.cp-sheetline {
+  font-size: calc(9px * var(--sz) * var(--doc-scale, 1));
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #e9cd82;
+  margin-top: calc(1mm * var(--sz));
+  border-top: 1px solid rgba(233, 205, 130, 0.25);
+  padding-top: calc(1mm * var(--sz));
 }
 .cp-headnote {
   font-size: calc(8.5px * var(--sz) * var(--doc-scale, 1));

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import DatePicker from '../components/DatePicker';
 import { addDaysISO, daysBetweenISO, normalizeFlight, prettyDate, todayISO } from '../lib/flight';
+import type { SectorInfo } from '../lib/routes';
 import type { CabinCode, CabinOption } from '../lib/types';
 
 export type CheckState = 'idle' | 'checking' | 'ok' | 'error';
@@ -14,6 +15,9 @@ interface SearchProps {
   cabinOptions: CabinOption[];
   selectedCabins: CabinCode[];
   onToggleCabin: (c: CabinCode) => void;
+  availableSectors: SectorInfo[] | null;
+  selectedSectors: number[];
+  onToggleSector: (seq: number) => void;
   error: { code: string; message: string } | null;
   staleNotice: boolean;
   onSubmitCheck: () => void;
@@ -34,7 +38,11 @@ const ERROR_TITLES: Record<string, string> = {
 };
 
 export default function Search(props: SearchProps) {
-  const { flightInput, onFlightInput, dateISO, onPickDate, checkState, cabinOptions, selectedCabins, error, staleNotice, apiMode, fetching } = props;
+  const {
+    flightInput, onFlightInput, dateISO, onPickDate, checkState,
+    cabinOptions, selectedCabins, availableSectors, selectedSectors,
+    error, staleNotice, apiMode, fetching
+  } = props;
   const [pickerOpen, setPickerOpen] = useState(false);
   const cabinsRef = useRef<HTMLDivElement>(null);
 
@@ -49,8 +57,10 @@ export default function Search(props: SearchProps) {
 
   const dateShift = dateISO ? daysBetweenISO(minISO, dateISO) : null;
   const outOfWindow = dateShift !== null && (dateShift < 0 || dateShift > 8);
-  const canCheck = gate.ok && dateISO !== null && !outOfWindow && checkState !== 'checking' && !fetching;
   const dateLabel = dateISO === minISO ? 'Today' : dateISO === tomorrow ? 'Tomorrow' : dateISO ? prettyDate(dateISO) : null;
+
+  const sectorMode = checkState === 'ok' && availableSectors !== null && availableSectors.length > 1;
+  const readyToFetch = selectedCabins.length > 0 && (!sectorMode || selectedSectors.length > 0);
 
   // auto-scroll the revealed picker into view (small screens)
   useEffect(() => {
@@ -65,7 +75,7 @@ export default function Search(props: SearchProps) {
       setTimeout(() => document.querySelector<HTMLButtonElement>('.pill.today')?.classList.remove('pulse'), 1200);
       return;
     }
-    if (canCheck) props.onSubmitCheck();
+    if (checkState === 'error' || checkState === 'idle') props.onSubmitCheck();
   };
 
   const errorTitle = error ? ERROR_TITLES[error.code] ?? 'Something went wrong' : '';
@@ -85,7 +95,7 @@ export default function Search(props: SearchProps) {
         className="field"
         onSubmit={(e) => {
           e.preventDefault();
-          if (canCheck) props.onSubmitCheck();
+          if (checkState === 'error' || checkState === 'idle') props.onSubmitCheck();
         }}
       >
         <label className="field-label" htmlFor="flight">Flight number</label>
@@ -129,7 +139,7 @@ export default function Search(props: SearchProps) {
             </div>
             {dateISO && outOfWindow ? (
               <div className="pills-note warn">
-                {prettyDate(dateISO)} is beyond the 8-day menu window — you can still check, but the menu service won’t have it yet.
+                {prettyDate(dateISO)} is beyond the 8-day menu window — the menu service won’t have it yet.
               </div>
             ) : (
               <div className="pills-note">
@@ -139,7 +149,7 @@ export default function Search(props: SearchProps) {
           </div>
         )}
 
-        {checkState !== 'ok' && checkState === 'checking' && (
+        {checkState === 'checking' && (
           <div className="checking" role="status" aria-live="polite">
             <span className="ring ring-sm" /> <span>Checking cabins…</span>
           </div>
@@ -196,7 +206,38 @@ export default function Search(props: SearchProps) {
                 );
               })}
             </div>
-            {selectedCabins.length > 0 && (
+
+            {sectorMode && availableSectors && (
+              <div className="sectors-wrap">
+                <div className="pills-label">
+                  Sectors on <strong>SQ {gateValue}</strong> — multi-sector service, pick what you’re printing
+                </div>
+                <div className="cabin-cards">
+                  {availableSectors.map((s, i) => {
+                    const on = selectedSectors.includes(s.seq);
+                    return (
+                      <button
+                        type="button"
+                        key={s.seq}
+                        className={`cabin-card sector-card card-in${on ? ' on' : ''}${fetching ? ' busy' : ''}`}
+                        style={{ animationDelay: `${i * 70 + 120}ms` }}
+                        onClick={() => props.onToggleSector(s.seq)}
+                        disabled={fetching}
+                        aria-pressed={on}
+                      >
+                        <span className="card-code">Sector {s.seq}</span>
+                        <span className="card-short">{s.label}</span>
+                        <span className="card-sub">{on ? '✓ Own sheet' : 'Add sector'}</span>
+                        <span className="card-tick">{on ? '✓' : ''}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="pills-note">Each selected sector is compiled as its own sheet — flip between them in the editor.</div>
+              </div>
+            )}
+
+            {readyToFetch && (
               <div className="fetch-wrap">
                 <button type="button" className="btn btn-primary btn-lg fetch-btn" disabled={fetching} onClick={props.onFetch}>
                   {fetching ? (
@@ -204,10 +245,18 @@ export default function Search(props: SearchProps) {
                       <span className="ring ring-sm ring-dark" /> Preparing…
                     </>
                   ) : (
-                    <>Fetch menu{selectedCabins.length > 1 ? ` · ${selectedCabins.length} cabins` : ''}</>
+                    <>
+                      Fetch menu
+                      {sectorMode && selectedSectors.length > 0 ? ` · ${selectedSectors.length} sector${selectedSectors.length > 1 ? 's' : ''}` : ''}
+                      {selectedCabins.length > 1 ? ` · ${selectedCabins.length} cabins` : ''}
+                    </>
                   )}
                 </button>
-                <div className="fetch-note">All selected cabins will be compiled onto one menu sheet.</div>
+                <div className="fetch-note">
+                  {sectorMode
+                    ? 'One sheet per sector, each showing all selected cabins.'
+                    : 'All selected cabins will be compiled onto one menu sheet.'}
+                </div>
               </div>
             )}
           </div>

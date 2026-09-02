@@ -112,6 +112,8 @@ export interface CabinSection {
 export interface MenuDoc {
   flightLabel: string; // "SQ 346"
   dateLabel: string; // "Sat, 6 Sep 2026"
+  /** Route label of this sheet when part of a multi-sector print run */
+  sheetTitle?: string;
   headerNote: string; // optional line under the title
   cabins: CabinSection[];
   showDescriptions: boolean;

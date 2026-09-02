@@ -257,18 +257,27 @@ export interface RawPayloadMeta {
   cabinClass?: unknown;
 }
 
+/**
+ * Build one menu document.
+ *
+ * `sectorIndex` (0-based position in each cabin's legs[]) restricts the doc to
+ * a single sector — used for multi-sector services where each sector is
+ * printed as its own sheet. Cabins that don't operate that sector are omitted.
+ */
 export function buildDoc(
   query: { flightNumber: string; flightDate: string },
-  rawByCabin: Array<{ cabin: CabinCode; payload: unknown }>
+  rawByCabin: Array<{ cabin: CabinCode; payload: unknown }>,
+  sectorIndex?: number
 ): MenuDoc {
   const cabins: CabinSection[] = [];
 
   for (const { cabin, payload } of rawByCabin) {
     const root = obj(payload);
-    const legs = arr(root?.legs)
+    let legs = arr(root?.legs)
       .map((l) => obj(l))
       .filter((l): l is Json => l !== null)
       .map(mapLeg);
+    if (sectorIndex !== undefined) legs = legs.filter((_, i) => i === sectorIndex);
     cabins.push({
       id: uid('cab'),
       code: cabin,
@@ -277,13 +286,22 @@ export function buildDoc(
     });
   }
 
-  cabins.sort((a, b) => CABIN_ORDER.indexOf(a.code) - CABIN_ORDER.indexOf(b.code));
+  const filled = cabins.filter((c) => c.legs.length > 0);
+  filled.sort((a, b) => CABIN_ORDER.indexOf(a.code) - CABIN_ORDER.indexOf(b.code));
+
+  // sheet title from the live leg data (first available leg)
+  let sheetTitle: string | undefined;
+  if (sectorIndex !== undefined) {
+    const leg = filled.flatMap((c) => c.legs)[0];
+    sheetTitle = leg?.routeLabel || undefined;
+  }
 
   return {
     flightLabel: `SQ ${query.flightNumber}`,
     dateLabel: prettyDate(query.flightDate),
+    sheetTitle,
     headerNote: '',
-    cabins,
+    cabins: filled,
     showDescriptions: true,
     attribution: 'Menu content © Singapore Airlines · Compiled with InkFlight — an unofficial crew tool'
   };

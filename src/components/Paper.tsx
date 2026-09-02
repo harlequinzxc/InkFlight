@@ -63,9 +63,11 @@ function ElegantPaper({ doc }: { doc: MenuDoc }) {
         <PlaneGlyph className="el-plane" />
         <div className="el-brand">Singapore Airlines</div>
         <h1 className="el-flight">{doc.flightLabel}</h1>
-        {doc.cabins.length === 1 && doc.cabins[0].legs.some((l) => l.include) && (
+        {doc.sheetTitle ? (
+          <div className="el-route">{doc.sheetTitle}</div>
+        ) : doc.cabins.length === 1 && doc.cabins[0].legs.some((l) => l.include) ? (
           <div className="el-route">{doc.cabins[0].legs.filter((l) => l.include).map((l) => l.routeLabel).filter(Boolean)[0]}</div>
-        )}
+        ) : null}
         <div className="el-date">{doc.dateLabel}</div>
         {doc.headerNote ? <div className="el-headnote">{doc.headerNote}</div> : null}
         <div className="el-rule">
@@ -190,6 +192,7 @@ function CompactPaper({ doc }: { doc: MenuDoc }) {
           <span className="cp-flight">{doc.flightLabel}</span>
           <span className="cp-date">{doc.dateLabel}</span>
         </div>
+        {doc.sheetTitle ? <div className="cp-sheetline">{doc.sheetTitle}</div> : null}
       </header>
       {doc.headerNote ? <div className="cp-headnote">{doc.headerNote}</div> : null}
 
