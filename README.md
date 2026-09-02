@@ -20,7 +20,7 @@ print-ready menu sheet — **A4 for the galley, A6 for the jacket pocket**.
 | ✍️ **Full editor** | Tap any text to edit; per-item include/hide; delete & add dishes; live preview |
 | 🎴 **Two layouts** | *Elegant* — fancy-restaurant single sheet · *Compact* — minimal gaps, one-look |
 | 📄 **A4 & A6** | True-to-size paper, export as **PNG / JPEG** or **.docx**, plus direct print |
-| 🛫 **Multi-sector aware** | Sector, cabin & multi-sector runs: SQ 11/12, 25/26, 377/378, 478/479 get a **sector multi-select** — each sector is printed as its own sheet with all chosen cabins |
+| 🛫 **Multi-sector aware** | Sectors are **discovered live** from the flight's own `legs[]` — any multi-sector service (current or future, 2–4 sectors) gets a sector multi-select; each sector prints as its own sheet with all chosen cabins |
 | 📱 **Installable** | PWA on Android, iOS (Add to Home Screen) and desktop; offline shell via service worker |
 | 💾 **Resilient** | Typed errors, stale-cache fallback ("offline copy · may be outdated"), nothing ever fabricated |
 
@@ -76,21 +76,27 @@ To develop against the built-in fake upstream (no network at all):
 npm run dev:mock   # SQ_API_BASE=mock — serves demo menus from src/lib/sq-mock.ts
 ```
 
-Demo rules: flight `999` or any date beyond 8 days → “no flight found”; flight `200`
-→ only YCL/SCL cabins; YCL cabin → snack-bag sector; flights `11`, `25`, `378`,
-`478` (and their return numbers) → the **sector picker** appears after the cabin
-check, and each sector becomes its own editor sheet.
+Demo rules: flight `999` or any date beyond 8 days → “no flight found”; flight `300`
+→ no cabins yet; flight `200` → only YCL/SCL cabins; `11`/`12`, `25`/`26`, `478`/`479`
+→ two-sector picker; **`700`** → a 3-sector SIN–BCN–MAD–SIN future-route demo;
+YCL cabin → snack-bag sectors.
 `scripts/mock-upstream.mjs` additionally simulates the raw *HTTP-level*
 upstream for contract tests.
 
-### Multi-sector services
+### Multi-sector services — fully dynamic
 
-`src/lib/routes.ts` maps the known two-sector flights (SQ 11/12 · 25/26 · 377/378 ·
-478/479) to display labels for the pre-fetch picker. After the menu arrives, sheet
-titles come from the **live leg data** (`departureCityName → arrivalCityName`), so a
-schedule or station change still renders truthfully — the table is a hint, never a
-source of truth. Each selected sector compiles to its own sheet showing all chosen
-cabins; the editor shows a sheet pager and exports are tagged `-S1`, `-S2`, …
+There is **no hardcoded route table**. During the cabin check the server quietly
+fetches the flight's menu (first returned cabin, inside the same serverless time
+budget) and derives the sector list from its **live `legs[]`** — real stations,
+real local times, in the exact order the menu system returns. Consequences:
+
+- the picker always matches what the editor will render (same data source);
+- future multi-sector services (e.g. SIN–BCN–MAD–BCN–SIN) appear automatically
+  — each sector becomes its own sheet, whatever their number;
+- if SQ retimes, re-stations or retires a route, the picker simply reflects it.
+
+If the discovery call cannot complete in time, the app falls back to a single
+sheet containing all sectors — nothing breaks.
 
 
 ```bash

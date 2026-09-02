@@ -18,7 +18,8 @@
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { CABIN_META, CABIN_ORDER, type CabinCode, type CabinOption } from './types';
+import { CABIN_META, CABIN_ORDER, type CabinCode, type CabinOption, type SectorOption } from './types';
+import { dayShiftLabel, durationFromUtc, parseStamp } from './flight';
 
 // ---------------------------------------------------------------------------
 // Endpoints & headers
@@ -210,16 +211,16 @@ async function callUpstream(path: string, body: UpstreamBody, timeoutMs = TIMEOU
  * is deliberately NEVER retried — it is a real answer, not a failure.
  */
 const DEADLINE_MS = 8_600;
-async function callUpstreamWithRetry(path: string, body: UpstreamBody): Promise<{ http: number; json: unknown }> {
+async function callUpstreamWithRetry(path: string, body: UpstreamBody, budgetMs = DEADLINE_MS): Promise<{ http: number; json: unknown }> {
   const start = Date.now();
   let attempt = 0;
   for (;;) {
-    const remaining = DEADLINE_MS - (Date.now() - start);
+    const remaining = budgetMs - (Date.now() - start);
     try {
       return await callUpstream(path, body, Math.min(6_000, Math.max(1_500, remaining)));
     } catch (err) {
       const retryable = err instanceof SqError && (err.code === 'UPSTREAM_TIMEOUT' || err.code === 'UPSTREAM_NETWORK' || err.code === 'UPSTREAM_HTTP');
-      const timeLeft = DEADLINE_MS - (Date.now() - start);
+      const timeLeft = budgetMs - (Date.now() - start);
       if (retryable && attempt < 2 && timeLeft >= 2_200) {
         attempt += 1;
         await new Promise((r) => setTimeout(r, 300 * attempt));
@@ -275,6 +276,8 @@ export interface CabinCheckResult {
   flight: string;
   flightDate: string;
   cabins: CabinOption[];
+  /** Live-discovered sectors — only when the flight operates 2+ legs. */
+  sectors?: SectorOption[];
 }
 
 function normalizeCabins(raw: unknown): CabinOption[] {
@@ -288,6 +291,31 @@ function normalizeCabins(raw: unknown): CabinOption[] {
     if (typeof r === 'string' && !known.has(r)) out.push({ code: r as CabinCode, label: r, short: r });
   }
   return out;
+}
+
+/**
+ * Derive the sector list straight from the live legs[] — never hardcoded.
+ * Labels carry real stations and local times, in the exact order the menu
+ * system returns, so the picker always matches what the editor will render.
+ */
+function sectorOptionsFrom(payload: unknown): SectorOption[] | undefined {
+  const legs = (payload as { legs?: unknown } | null)?.legs;
+  if (!Array.isArray(legs)) return undefined;
+  const out: SectorOption[] = [];
+  legs.forEach((leg, i) => {
+    const fd = (leg as { flightDetails?: Record<string, unknown> } | null)?.flightDetails ?? {};
+    const dep = String(fd.departureCityName || fd.departureAirportCode || '').trim();
+    const arr = String(fd.arrivalCityName || fd.arrivalAirportCode || '').trim();
+    if (!dep || !arr) return;
+    const d = parseStamp(fd.departureLocalDate);
+    const a = parseStamp(fd.arrivalLocalDate);
+    const shift = dayShiftLabel(fd.departureLocalDate, fd.arrivalLocalDate);
+    const dur = durationFromUtc(fd.departureUtcDate, fd.arrivalUtcDate);
+    const times = d.valid && a.valid ? `${d.hhmm} → ${a.hhmm}${shift ? ' ' + shift : ''}` : '';
+    const meta = [times, dur].filter(Boolean).join(' · ');
+    out.push({ seq: i + 1, label: meta ? `${dep} → ${arr}  ·  ${meta}` : `${dep} → ${arr}` });
+  });
+  return out.length > 1 ? out : undefined;
 }
 
 export async function getCabins(q: SqQuery): Promise<CabinCheckResult & { stale?: boolean }> {
@@ -305,13 +333,29 @@ export async function getCabins(q: SqQuery): Promise<CabinCheckResult & { stale?
       flightNumber,
       flightDate,
       sessionId: sessionId()
-    });
+    }, 5_000);
     assertBodyStatus(json);
     const cabins = normalizeCabins((json as { cabinClasses?: unknown })?.cabinClasses);
     if (cabins.length === 0) {
       throw new SqError('NO_CABINS', 'We found the flight, but no menu cabins are open for it yet. Try again closer to departure.', 404);
     }
     const payload: CabinCheckResult = { flight: flightNumber, flightDate, cabins };
+
+    // Dynamic sector discovery (best-effort): pull the menu for the first known
+    // cabin and read its legs[] flightDetails. Later, when the user picks cabins
+    // for real, this menu comes back as a cache hit — no extra upstream load.
+    // Total serverless budget stays < 10 s: 5 s (cabins) + 3.4 s (discovery).
+    const firstKnown = cabins.find((c) => (CABIN_ORDER as string[]).includes(c.code));
+    if (firstKnown) {
+      try {
+        const menu = await getMenu({ flightNumber, flightDate, cabinClass: firstKnown.code }, 3_400);
+        const sectors = sectorOptionsFrom(menu.data);
+        if (sectors) payload.sectors = sectors;
+      } catch (err) {
+        console.error('[sq] sector discovery skipped:', err instanceof Error ? err.message : err);
+      }
+    }
+
     cachePut(key, payload, TTL_OK);
     return payload;
   } catch (err) {
@@ -323,7 +367,7 @@ export async function getCabins(q: SqQuery): Promise<CabinCheckResult & { stale?
   }
 }
 
-export async function getMenu(q: SqQuery): Promise<{ data: unknown; stale?: boolean }> {
+export async function getMenu(q: SqQuery, budgetMs = DEADLINE_MS): Promise<{ data: unknown; stale?: boolean }> {
   const flightNumber = cleanFlightNumber(q.flightNumber);
   const flightDate = cleanDate(q.flightDate);
   const cabinClass = cleanCabin(q.cabinClass);
@@ -339,7 +383,7 @@ export async function getMenu(q: SqQuery): Promise<{ data: unknown; stale?: bool
       flightDate,
       cabinClass,
       sessionId: sessionId()
-    });
+    }, budgetMs);
     assertBodyStatus(json);
     cachePut(key, json, TTL_OK);
     return { data: json };

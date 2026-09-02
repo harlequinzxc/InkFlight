@@ -137,6 +137,12 @@ export type ApiErrorCode =
   | 'UPSTREAM_HTTP'
   | 'RATE_LIMITED';
 
+/** One selectable sector of a multi-sector service (built from live leg data). */
+export interface SectorOption {
+  seq: number;
+  label: string;
+}
+
 export interface ApiError {
   code: ApiErrorCode;
   message: string;

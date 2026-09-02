@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import DatePicker from '../components/DatePicker';
 import { addDaysISO, daysBetweenISO, normalizeFlight, prettyDate, todayISO } from '../lib/flight';
-import type { SectorInfo } from '../lib/routes';
-import type { CabinCode, CabinOption } from '../lib/types';
+import type { CabinCode, CabinOption, SectorOption } from '../lib/types';
 
 export type CheckState = 'idle' | 'checking' | 'ok' | 'error';
 
@@ -15,7 +14,7 @@ interface SearchProps {
   cabinOptions: CabinOption[];
   selectedCabins: CabinCode[];
   onToggleCabin: (c: CabinCode) => void;
-  availableSectors: SectorInfo[] | null;
+  availableSectors: SectorOption[] | null;
   selectedSectors: number[];
   onToggleSector: (seq: number) => void;
   error: { code: string; message: string } | null;
@@ -181,36 +180,11 @@ export default function Search(props: SearchProps) {
       <div ref={cabinsRef}>
         {checkState === 'ok' && (
           <div className="cabins-wrap">
-            <div className="pills-label" aria-live="polite">
-              Cabins available on <strong>SQ {gateValue}</strong> · {dateISO ? prettyDate(dateISO) : ''}
-              {cabinOptions.length > 1 ? ' — pick all that apply' : ''}
-            </div>
-            <div className="cabin-cards">
-              {cabinOptions.map((c, i) => {
-                const on = selectedCabins.includes(c.code);
-                return (
-                  <button
-                    type="button"
-                    key={c.code}
-                    className={`cabin-card card-in${on ? ' on' : ''}${fetching ? ' busy' : ''}`}
-                    style={{ animationDelay: `${i * 70}ms` }}
-                    onClick={() => props.onToggleCabin(c.code)}
-                    disabled={fetching}
-                    aria-pressed={on}
-                  >
-                    <span className="card-code">{c.code}</span>
-                    <span className="card-short">{c.short}</span>
-                    <span className="card-sub">{on ? '✓ On the sheet' : 'View menu'}</span>
-                    <span className="card-tick">{on ? '✓' : ''}</span>
-                  </button>
-                );
-              })}
-            </div>
-
+            {/* SECTORS FIRST — discovered live from the flight's legs[] */}
             {sectorMode && availableSectors && (
               <div className="sectors-wrap">
-                <div className="pills-label">
-                  Sectors on <strong>SQ {gateValue}</strong> — multi-sector service, pick what you’re printing
+                <div className="pills-label" aria-live="polite">
+                  Sectors on <strong>SQ {gateValue}</strong> · {dateISO ? prettyDate(dateISO) : ''} — multi-sector service, pick what you’re printing
                 </div>
                 <div className="cabin-cards">
                   {availableSectors.map((s, i) => {
@@ -220,7 +194,7 @@ export default function Search(props: SearchProps) {
                         type="button"
                         key={s.seq}
                         className={`cabin-card sector-card card-in${on ? ' on' : ''}${fetching ? ' busy' : ''}`}
-                        style={{ animationDelay: `${i * 70 + 120}ms` }}
+                        style={{ animationDelay: `${i * 70}ms` }}
                         onClick={() => props.onToggleSector(s.seq)}
                         disabled={fetching}
                         aria-pressed={on}
@@ -236,6 +210,42 @@ export default function Search(props: SearchProps) {
                 <div className="pills-note">Each selected sector is compiled as its own sheet — flip between them in the editor.</div>
               </div>
             )}
+
+            <div className={sectorMode ? 'cabins-after-sectors' : ''}>
+              <div className="pills-label" aria-live={sectorMode ? undefined : 'polite'}>
+                {sectorMode ? (
+                  <>
+                    Cabin classes on <strong>SQ {gateValue}</strong> — pick all that apply
+                  </>
+                ) : (
+                  <>
+                    Cabins available on <strong>SQ {gateValue}</strong> · {dateISO ? prettyDate(dateISO) : ''}
+                    {cabinOptions.length > 1 ? ' — pick all that apply' : ''}
+                  </>
+                )}
+              </div>
+              <div className="cabin-cards">
+                {cabinOptions.map((c, i) => {
+                  const on = selectedCabins.includes(c.code);
+                  return (
+                    <button
+                      type="button"
+                      key={c.code}
+                      className={`cabin-card card-in${on ? ' on' : ''}${fetching ? ' busy' : ''}`}
+                      style={{ animationDelay: `${i * 70 + (sectorMode ? 120 : 0)}ms` }}
+                      onClick={() => props.onToggleCabin(c.code)}
+                      disabled={fetching}
+                      aria-pressed={on}
+                    >
+                      <span className="card-code">{c.code}</span>
+                      <span className="card-short">{c.short}</span>
+                      <span className="card-sub">{on ? '✓ On the sheet' : 'View menu'}</span>
+                      <span className="card-tick">{on ? '✓' : ''}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
             {readyToFetch && (
               <div className="fetch-wrap">

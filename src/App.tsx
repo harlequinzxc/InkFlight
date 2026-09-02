@@ -6,8 +6,7 @@ import Editor from './views/Editor';
 import { ApiFailure, fetchCabins, fetchMenu } from './lib/api';
 import { addDaysISO, daysBetweenISO, normalizeFlight, prettyDate, todayISO } from './lib/flight';
 import { buildDoc } from './lib/normalize';
-import { sectorPlanFor, type SectorInfo } from './lib/routes';
-import { CABIN_ORDER, type CabinCode, type CabinOption, type LayoutKind, type MenuDoc, type PaperSize } from './lib/types';
+import { CABIN_ORDER, type CabinCode, type CabinOption, type LayoutKind, type MenuDoc, type PaperSize, type SectorOption } from './lib/types';
 
 type View = 'landing' | 'search' | 'editor';
 
@@ -62,7 +61,7 @@ export default function App() {
   const [checkState, setCheckState] = useState<CheckState>('idle');
   const [cabinOptions, setCabinOptions] = useState<CabinOption[]>([]);
   const [selectedCabins, setSelectedCabins] = useState<CabinCode[]>([]);
-  const [availableSectors, setAvailableSectors] = useState<SectorInfo[] | null>(null);
+  const [availableSectors, setAvailableSectors] = useState<SectorOption[] | null>(null);
   const [selectedSectors, setSelectedSectors] = useState<number[]>([]);
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
   const [staleNotice, setStaleNotice] = useState(false);
@@ -150,11 +149,14 @@ export default function App() {
         setCabinOptions(data.cabins);
         setCheckState('ok');
         setStaleNotice(stale);
-        // multi-sector services get a sector picker (multi-select)
-        const plan = sectorPlanFor(flight);
-        if (plan) {
-          setAvailableSectors(plan);
-          setSelectedSectors(plan.map((s) => s.seq)); // default: whole run
+        // Sectors are discovered LIVE from the flight's legs[] (server-side) —
+        // any current or future multi-sector service is picked up automatically.
+        if (data.sectors && data.sectors.length > 1) {
+          setAvailableSectors(data.sectors);
+          setSelectedSectors(data.sectors.map((s) => s.seq)); // default: whole run
+        } else {
+          setAvailableSectors(null);
+          setSelectedSectors([]);
         }
       })
       .catch((err: unknown) => {

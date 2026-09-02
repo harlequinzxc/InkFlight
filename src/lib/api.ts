@@ -1,6 +1,6 @@
 /** Client → our own /api (same-origin). Typed errors, no leaks upstream. */
 
-import type { ApiError, CabinOption } from './types';
+import type { ApiError, CabinOption, SectorOption } from './types';
 
 interface ApiEnvelope<T> {
   ok: boolean;
@@ -72,6 +72,8 @@ export interface CabinCheckData {
   flight: string;
   flightDate: string;
   cabins: CabinOption[];
+  /** Discovered live from the flight's legs[] — present only for multi-sector runs. */
+  sectors?: SectorOption[];
 }
 
 export async function fetchCabins(
