@@ -84,10 +84,12 @@ function mapCourse(raw: Json): Course {
     .filter((i): i is Json => i !== null && str(i.name) !== '')
     .map(mapItem);
   const maxSeq = typeof raw.maxSequence === 'number' ? raw.maxSequence : 0;
+  const category = str(raw.category) || 'Menu';
   return {
     id: uid('cs'),
-    include: true,
-    category: str(raw.category) || 'Menu',
+    // Hot Beverage hidden by default (toggle it back in the editor)
+    include: !/^hot\s?bev/i.test(category),
+    category,
     choose: maxSeq > 1 ? maxSeq : 0,
     items
   };
@@ -161,7 +163,8 @@ function mapBeverages(bevRoot: unknown): BeverageCategory[] {
       }
     }
     if (groups.length > 0) {
-      out.push({ id: uid('bc'), include: true, name: catName || 'Beverages', groups });
+      // default OFF for everything except the Champagne & Wine list
+      out.push({ id: uid('bc'), include: /champagne/i.test(catName), name: catName || 'Beverages', groups });
     }
   }
   return out;
@@ -253,8 +256,11 @@ function mapLeg(legRaw: Json): LegSection {
     snackNote,
     amenities,
     amenityNote,
+    amenitiesOn: false,
     banners,
-    notes
+    bannersOn: false,
+    notes,
+    notesOn: false
   };
   return out;
 }
@@ -316,4 +322,26 @@ export function buildDoc(
     showDescriptions: true,
     attribution: 'Menu content © Singapore Airlines · Compiled with InkFlight — an unofficial crew tool'
   };
+}
+
+/** Bring legacy persisted docs up to the current model (missing print toggles). */
+export function migrateDoc(doc: MenuDoc): MenuDoc {
+  for (const cab of doc.cabins) {
+    for (const leg of cab.legs) {
+      if (leg.amenitiesOn === undefined) leg.amenitiesOn = false;
+      if (leg.bannersOn === undefined) leg.bannersOn = false;
+      if (leg.notesOn === undefined) leg.notesOn = false;
+      for (const cat of leg.beverages) {
+        if (cat.include === undefined) cat.include = /champagne/i.test(cat.name);
+      }
+      for (const meal of leg.meals) {
+        for (const sel of meal.selections) {
+          for (const course of sel.courses) {
+            if (course.include === undefined) course.include = !/^hot\s?bev/i.test(course.category);
+          }
+        }
+      }
+    }
+  }
+  return doc;
 }

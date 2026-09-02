@@ -102,8 +102,14 @@ export interface LegSection {
   snackNote: string;
   amenities: string[];
   amenityNote: string;
+  /** print toggle (default OFF) */
+  amenitiesOn: boolean;
   banners: string[];
+  /** print toggle (default OFF) */
+  bannersOn: boolean;
   notes: string[];
+  /** print toggle (default OFF) */
+  notesOn: boolean;
 }
 
 export interface CabinSection {

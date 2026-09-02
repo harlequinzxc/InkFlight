@@ -132,8 +132,10 @@ function elegantChildren(doc: MenuDoc): Paragraph[] {
       });
     }
     for (const leg of legs) {
-      for (const b of leg.banners) {
-        p({ alignment: AlignmentType.CENTER, spacing: { after: 40 }, children: [new TextRun({ text: b, font: SANS, size: 14, italics: true, color: GOLD })] });
+      if (leg.bannersOn) {
+        for (const b of leg.banners) {
+          p({ alignment: AlignmentType.CENTER, spacing: { after: 40 }, children: [new TextRun({ text: b, font: SANS, size: 14, italics: true, color: GOLD })] });
+        }
       }
       for (const meal of leg.meals.filter((m) => m.include)) {
         p({ alignment: AlignmentType.CENTER, spacing: { before: 120, after: 10 }, children: [new TextRun({ text: leg.routeLabel.replace(' → ', ' to ').toUpperCase(), font: SANS, size: 15, color: GREY, characterSpacing: 30 })] });
@@ -145,8 +147,9 @@ function elegantChildren(doc: MenuDoc): Paragraph[] {
           if (sel.name) p({ alignment: AlignmentType.CENTER, spacing: { before: 60, after: 10 }, children: [new TextRun({ text: sel.name, font: SERIF, size: 27, bold: true, color: NAVY })] });
           if (sel.footnote && doc.showDescriptions) p({ alignment: AlignmentType.CENTER, spacing: { after: 40 }, children: [new TextRun({ text: sel.footnote, font: SANS, italics: true, size: 14, color: GREY })] });
           for (const course of sel.courses.filter((c) => c.include && c.items.some((i) => i.include))) {
-            const label = course.choose > 1 ? `${course.category} · choose 1 of ${course.choose}` : course.category;
-            p({ alignment: AlignmentType.CENTER, spacing: { before: 80, after: 30 }, children: [new TextRun({ text: label, font: SANS, italics: true, size: 19, color: '2B3245' })] });
+            const n = course.items.filter((i) => i.include).length;
+            p({ alignment: AlignmentType.CENTER, spacing: { before: 80, after: n >= 2 ? 6 : 30 }, children: [new TextRun({ text: course.category, font: SANS, italics: true, size: 19, color: '2B3245' })] });
+            if (n >= 2) p({ alignment: AlignmentType.CENTER, spacing: { after: 30 }, children: [new TextRun({ text: `Choose one of ${n}`, font: SANS, size: 15, color: '9AA3B5' })] });
             for (const item of course.items.filter((i) => i.include)) {
               p({ alignment: AlignmentType.CENTER, spacing: { after: 8 }, children: [new TextRun({ text: item.name, font: SANS, size: 21, bold: true, color: INK })] });
               if (doc.showDescriptions && item.desc) p({ alignment: AlignmentType.CENTER, spacing: { after: 24 }, children: [new TextRun({ text: item.desc, font: SANS, italics: true, size: 17, color: GREY })] });
@@ -159,7 +162,7 @@ function elegantChildren(doc: MenuDoc): Paragraph[] {
         const extras: Array<{ label: string; lines: Array<{ head: string; body: string }> }> = [];
         if (bev.length > 0) extras.push({ label: 'Beverages', lines: bev });
         if (snacks.length > 0) extras.push({ label: 'Snacks', lines: snacks });
-        if (leg.amenities.length > 0) extras.push({ label: 'Amenities', lines: [{ head: '', body: leg.amenities.join(', ') }] });
+        if (leg.amenitiesOn && leg.amenities.length > 0) extras.push({ label: 'Amenities', lines: [{ head: '', body: leg.amenities.join(', ') }] });
         for (const ex of extras) {
           p({ alignment: AlignmentType.CENTER, spacing: { before: 90, after: 30 }, children: [new TextRun({ text: ex.label, font: SANS, italics: true, size: 19, color: '2B3245' })] });
           for (const line of ex.lines) {
@@ -170,8 +173,10 @@ function elegantChildren(doc: MenuDoc): Paragraph[] {
           }
         }
 
-        for (const n of leg.notes.filter(Boolean)) {
-          p({ alignment: AlignmentType.CENTER, spacing: { after: 30 }, children: [new TextRun({ text: n, font: SERIF, italics: true, size: 16, color: GREY })] });
+        if (leg.notesOn) {
+          for (const n of leg.notes.filter(Boolean)) {
+            p({ alignment: AlignmentType.CENTER, spacing: { after: 30 }, children: [new TextRun({ text: n, font: SERIF, italics: true, size: 16, color: GREY })] });
+          }
         }
       }
     }
@@ -209,7 +214,7 @@ function compactChildren(doc: MenuDoc): Paragraph[] {
           }
           for (const course of sel.courses.filter((c) => c.include && c.items.some((i) => i.include))) {
             const items = course.items.filter((i) => i.include).map((i) => i.name.toUpperCase());
-            const label = `${shortCourseLabel(course.category)}${course.choose > 1 ? ` (CHOOSE 1 OF ${course.choose})` : ''}:`;
+            const label = `${shortCourseLabel(course.category)}:`;
             items.forEach((name, idx) => {
               if (idx === 0) {
                 p({ spacing: { after: 8 }, children: [new TextRun({ text: `${label} `, font: SANS, size: 19, bold: true, color: INK }), new TextRun({ text: name, font: SANS, size: 19, color: INK })] });
@@ -231,11 +236,13 @@ function compactChildren(doc: MenuDoc): Paragraph[] {
       for (const line of snackLines(leg)) {
         p({ spacing: { after: 8 }, children: [new TextRun({ text: `${shortCourseLabel(line.head.split(' — ').pop() ?? line.head)}: `, font: SANS, size: 19, bold: true, color: INK }), new TextRun({ text: line.body.toUpperCase(), font: SANS, size: 19, color: INK })] });
       }
-      if (leg.amenities.length > 0) {
+      if (leg.amenitiesOn && leg.amenities.length > 0) {
         p({ spacing: { after: 8 }, children: [new TextRun({ text: 'AMENITY: ', font: SANS, size: 19, bold: true, color: INK }), new TextRun({ text: leg.amenities.join(', ').toUpperCase(), font: SANS, size: 19, color: INK })] });
       }
-      for (const b of leg.banners) {
-        p({ spacing: { after: 10 }, children: [new TextRun({ text: `NOTE: ${b.toUpperCase()}`, font: SANS, size: 15, italics: true, color: GREY })] });
+      if (leg.bannersOn) {
+        for (const b of leg.banners) {
+          p({ spacing: { after: 10 }, children: [new TextRun({ text: `NOTE: ${b.toUpperCase()}`, font: SANS, size: 15, italics: true, color: GREY })] });
+        }
       }
     }
   }

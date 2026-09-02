@@ -1031,14 +1031,6 @@ body {
   position: relative;
   margin-top: calc(3.5mm * var(--sz) * var(--doc-scale, 1));
 }
-.eg-line {
-  position: absolute;
-  top: calc(2.5mm * var(--sz));
-  bottom: calc(2.5mm * var(--sz));
-  left: calc(34.5mm * var(--sz) * var(--doc-scale, 1));
-  width: 1px;
-  background: #c6cede;
-}
 .eg-row {
   position: relative;
   display: flex;

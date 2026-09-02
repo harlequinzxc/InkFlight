@@ -5,7 +5,7 @@ import Search, { type CheckState } from './views/Search';
 import Editor from './views/Editor';
 import { ApiFailure, fetchCabins, fetchMenu } from './lib/api';
 import { normalizeFlight, prettyDate, todayISO } from './lib/flight';
-import { buildDoc } from './lib/normalize';
+import { buildDoc, migrateDoc } from './lib/normalize';
 import { CABIN_ORDER, type CabinCode, type CabinOption, type LayoutKind, type MenuDoc, type PaperSize, type SectorOption } from './lib/types';
 
 type View = 'landing' | 'search' | 'editor';
@@ -42,7 +42,8 @@ function saveJSON(key: string, value: unknown): void {
 function loadDocs(): MenuDoc[] {
   const raw = loadJSON<MenuDoc | MenuDoc[]>(DOC_KEY);
   if (!raw) return [];
-  return Array.isArray(raw) ? raw : [raw];
+  const list = Array.isArray(raw) ? raw : [raw];
+  return list.map(migrateDoc);
 }
 
 const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));

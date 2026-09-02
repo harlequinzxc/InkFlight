@@ -121,7 +121,9 @@ export default function EditPanel({ doc, onChange }: EditPanelProps) {
                                   <div className="ep-course-head">
                                     <Eye on={course.include} onToggle={() => mutate((d) => { const c = d.cabins.flatMap((x) => x.legs).flatMap((l) => l.meals).flatMap((m) => m.selections).flatMap((s) => s.courses).find((y) => y.id === course.id); if (c) c.include = !c.include; })} />
                                     <Editable className="ep-text strong" value={course.category} onChange={(v) => mutate((d) => { const c = d.cabins.flatMap((x) => x.legs).flatMap((l) => l.meals).flatMap((m) => m.selections).flatMap((s) => s.courses).find((y) => y.id === course.id); if (c) c.category = v; })} />
-                                    {course.choose > 1 ? <span className="ep-choose">choose 1 of {course.choose}</span> : null}
+                                    {course.items.filter((i) => i.include).length >= 2 ? (
+                                      <span className="ep-choose">choose one of {course.items.filter((i) => i.include).length}</span>
+                                    ) : null}
                                   </div>
                                   {course.items.map((item) => (
                                     <div className="ep-item" key={item.id}>
@@ -282,8 +284,11 @@ export default function EditPanel({ doc, onChange }: EditPanelProps) {
 
                   {/* amenities */}
                   {leg.amenities.length > 0 && (
-                    <details className="acc sub2">
-                      <summary><span className="acc-name">Amenities</span></summary>
+                    <details className="acc sub2" open={leg.amenitiesOn}>
+                      <summary>
+                        <Eye on={leg.amenitiesOn} onToggle={() => mutate((d) => { const l = d.cabins.flatMap((c) => c.legs).find((x) => x.id === leg.id); if (l) l.amenitiesOn = !l.amenitiesOn; })} />
+                        <span className="acc-name">Amenities</span>
+                      </summary>
                       <div className="acc-body">
                         <div className="ep-line"><span className="ep-key">Note</span><Editable className="ep-text small" value={leg.amenityNote} onChange={(v) => mutate((d) => { const l = d.cabins.flatMap((c) => c.legs).find((x) => x.id === leg.id); if (l) l.amenityNote = v; })} /></div>
                         <StringList
@@ -297,11 +302,25 @@ export default function EditPanel({ doc, onChange }: EditPanelProps) {
                   )}
 
                   {/* banners & notes */}
-                  {(leg.banners.length > 0 || leg.notes.length > 0) && (
-                    <details className="acc sub2">
-                      <summary><span className="acc-name">Banners & notes</span></summary>
+                  {leg.banners.length > 0 && (
+                    <details className="acc sub2" open={leg.bannersOn}>
+                      <summary>
+                        <Eye on={leg.bannersOn} onToggle={() => mutate((d) => { const l = d.cabins.flatMap((c) => c.legs).find((x) => x.id === leg.id); if (l) l.bannersOn = !l.bannersOn; })} />
+                        <span className="acc-name">Banners</span>
+                      </summary>
                       <div className="acc-body">
                         <StringList title="Banners" list={leg.banners} onList={(n) => mutate((d) => { const l = d.cabins.flatMap((c) => c.legs).find((x) => x.id === leg.id); if (l) l.banners = n; })} placeholder="Banner" />
+                      </div>
+                    </details>
+                  )}
+
+                  {leg.notes.length > 0 && (
+                    <details className="acc sub2" open={leg.notesOn}>
+                      <summary>
+                        <Eye on={leg.notesOn} onToggle={() => mutate((d) => { const l = d.cabins.flatMap((c) => c.legs).find((x) => x.id === leg.id); if (l) l.notesOn = !l.notesOn; })} />
+                        <span className="acc-name">Notes</span>
+                      </summary>
+                      <div className="acc-body">
                         <StringList title="Notes" list={leg.notes} onList={(n) => mutate((d) => { const l = d.cabins.flatMap((c) => c.legs).find((x) => x.id === leg.id); if (l) l.notes = n; })} placeholder="Note" />
                       </div>
                     </details>

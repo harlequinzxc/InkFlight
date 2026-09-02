@@ -129,11 +129,10 @@ function ElegantBeverageRows({ leg }: { leg: LegSection }) {
   const rows: Array<{ label: string; lines: Array<{ head: string; body: string }> }> = [];
   if (bev.length > 0) rows.push({ label: 'Beverages', lines: bev });
   if (snacks.length > 0) rows.push({ label: 'Snacks', lines: snacks });
-  if (leg.amenities.length > 0) rows.push({ label: 'Amenities', lines: [{ head: '', body: joinNames(leg.amenities) }] });
+  if (leg.amenitiesOn && leg.amenities.length > 0) rows.push({ label: 'Amenities', lines: [{ head: '', body: joinNames(leg.amenities) }] });
   if (rows.length === 0) return null;
   return (
     <div className="eg-timeline">
-      <div className="eg-line" />
       {rows.map((row) => (
         <div className="eg-row" key={row.label}>
           <div className="eg-label">{row.label}</div>
@@ -178,7 +177,7 @@ function ElegantPaper({ doc }: { doc: MenuDoc }) {
             {multiCabin && <h2 className="eg-cabin-title"><span>{cab.title}</span></h2>}
             {legs.map((leg) => (
               <div className="eg-leg" key={leg.id}>
-                {leg.banners.map((b, i) => (
+                {leg.bannersOn && leg.banners.map((b, i) => (
                   <div className="eg-banner" key={i}>{b}</div>
                 ))}
 
@@ -196,14 +195,15 @@ function ElegantPaper({ doc }: { doc: MenuDoc }) {
                         {sel.name ? <h4 className="eg-selname">{sel.name}</h4> : null}
                         {sel.footnote && doc.showDescriptions ? <p className="eg-selfoot">{sel.footnote}</p> : null}
                         <div className="eg-timeline">
-                          <div className="eg-line" />
                           {sel.courses
                             .filter((c) => c.include && c.items.some((i) => i.include))
-                            .map((course) => (
+                            .map((course) => {
+                              const n = course.items.filter((i) => i.include).length;
+                              return (
                               <div className="eg-row" key={course.id}>
                                 <div className="eg-label">
                                   {course.category}
-                                  {course.choose > 1 ? <small>choose 1 of {course.choose}</small> : null}
+                                  {n >= 2 ? <small>Choose one of {n}</small> : null}
                                 </div>
                                 <div className="eg-marker"><i /></div>
                                 <div className="eg-dishes">
@@ -215,7 +215,8 @@ function ElegantPaper({ doc }: { doc: MenuDoc }) {
                                   ))}
                                 </div>
                               </div>
-                            ))}
+                              );
+                            })}
                         </div>
                       </div>
                     ))}
@@ -224,9 +225,10 @@ function ElegantPaper({ doc }: { doc: MenuDoc }) {
 
                 <ElegantBeverageRows leg={leg} />
 
-                {leg.notes.filter(Boolean).map((n, i) => (
-                  <p className="eg-footnote" key={i}>{n}</p>
-                ))}
+                {leg.notesOn &&
+                  leg.notes.filter(Boolean).map((n, i) => (
+                    <p className="eg-footnote" key={i}>{n}</p>
+                  ))}
               </div>
             ))}
           </section>
@@ -242,9 +244,9 @@ function ElegantPaper({ doc }: { doc: MenuDoc }) {
 // COMPACT LAYOUT — crew one-look sheet
 // ===========================================================================
 
-function CompactCourse({ label, choose, names }: { label: string; choose: number; names: string[] }) {
+function CompactCourse({ label, names }: { label: string; names: string[] }) {
   if (names.length === 0) return null;
-  const head = `${label}${choose > 1 ? ` (CHOOSE 1 OF ${choose})` : ''}:`;
+  const head = `${label}:`;
   return (
     <>
       <div className="cx-line">
@@ -289,7 +291,6 @@ function CompactPaper({ doc }: { doc: MenuDoc }) {
                           <CompactCourse
                             key={course.id}
                             label={shortCourseLabel(course.category)}
-                            choose={course.choose}
                             names={course.items.filter((i) => i.include).map((i) => i.name)}
                           />
                         ))}
@@ -302,7 +303,7 @@ function CompactPaper({ doc }: { doc: MenuDoc }) {
                 <div className="cx-block">
                   <div className="cx-head">{fc}{dest} {cab.code} (BEVERAGES) {dc}</div>
                   {bev.map((line, i) => (
-                    <CompactCourse key={i} label={shortCourseLabel(line.head.split(' — ').pop() ?? line.head)} choose={0} names={[line.body]} />
+                    <CompactCourse key={i} label={shortCourseLabel(line.head.split(' — ').pop() ?? line.head)} names={[line.body]} />
                   ))}
                 </div>
               )}
@@ -310,18 +311,19 @@ function CompactPaper({ doc }: { doc: MenuDoc }) {
               {snacks.length > 0 && (
                 <div className="cx-block">
                   {snacks.map((line, i) => (
-                    <CompactCourse key={i} label={shortCourseLabel(line.head)} choose={0} names={[line.body]} />
+                    <CompactCourse key={i} label={shortCourseLabel(line.head)} names={[line.body]} />
                   ))}
                 </div>
               )}
 
-              {leg.amenities.length > 0 && (
-                <CompactCourse label="AMENITY" choose={0} names={[joinNames(leg.amenities).toUpperCase()]} />
+              {leg.amenitiesOn && leg.amenities.length > 0 && (
+                <CompactCourse label="AMENITY" names={[joinNames(leg.amenities).toUpperCase()]} />
               )}
 
-              {leg.banners.map((b, i) => (
-                <div className="cx-banner" key={i}>NOTE: {b.toUpperCase()}</div>
-              ))}
+              {leg.bannersOn &&
+                leg.banners.map((b, i) => (
+                  <div className="cx-banner" key={i}>NOTE: {b.toUpperCase()}</div>
+                ))}
             </section>
           );
         });
