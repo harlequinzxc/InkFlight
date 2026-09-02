@@ -28,7 +28,7 @@ print-ready menu sheet — **A4 for the galley, A6 for the jacket pocket**.
 
 1. **Landing** — *"Ditch the pen, save the ink."* → Proceed
 2. **Search** — key in a flight number (`SQ326` or `326`) → date pills appear
-   (Today / Tomorrow / picker, today → +6 weeks; menus publish today → +8 days)
+   (Today / Tomorrow / picker — booking horizon **today → +6 weeks**, matching the live menu site)
    → cabin check → pick one or many cabins → **Fetch menu**
 3. **Interlude** — *"Fetching menu from seat pocket…"* → *"Almost there…"*
 4. **Editor** — live paper preview ⇄ structured edit panel → Export sheet
@@ -57,7 +57,7 @@ src/views/*                     Landing · Search · Editor
 - `POST …/api/menu` — same body **+ `cabinClass`** → full menu per `legs[]` sector
 - **No auth** (`sessionId` is a client-generated UUID). Browsers are CORS-blocked →
   all calls are server-side. The **body's** `statusCode` is authoritative
-  (`101` = flight/menu not found). Menus publish **today → +8 days**.
+  (`101` = flight/menu not found). Booking horizon: **today → +6 weeks** (enforced server-side).
 - Caching: key `SQ{flight}:{date}:{cabin}`, TTL ≈ 6 h; NOT_FOUND cached minutes;
   transient upstream failures fall back to a stale copy, flagged to the UI.
 
@@ -76,7 +76,7 @@ To develop against the built-in fake upstream (no network at all):
 npm run dev:mock   # SQ_API_BASE=mock — serves demo menus from src/lib/sq-mock.ts
 ```
 
-Demo rules: flight `999` or any date beyond 8 days → “no flight found”; flight `300`
+Demo rules: flight `999` or any date beyond 6 weeks → “no flight found” / out of window; flight `300`
 → no cabins yet; flight `200` → only YCL/SCL cabins; `11`/`12`, `25`/`26`, `478`/`479`
 → two-sector picker; **`700`** → a 3-sector SIN–BCN–MAD–SIN future-route demo;
 YCL cabin → snack-bag sectors.
@@ -124,7 +124,7 @@ npm run preview    # serve the build
 |---|---|
 | *“…served a web page instead of the menu API”* / `ref: UPSTREAM_HTTP` | The deployment has **no `/api` functions** — you deployed a branch/commit without the `api/` folder, or the deploy predates the app. Redeploy the latest commit of the correct branch; check *Vercel → Deployments → Functions* lists `api/cabins` & `api/menu`. |
 | *“…menu service is temporarily unreachable”* / `ref: UPSTREAM_TIMEOUT` / `UPSTREAM_NETWORK` / `UPSTREAM_HTTP` | The **SQ endpoint didn't answer the datacenter request**. The functions retry automatically within the time budget. If it persists: set the project's **function region to Singapore (`sin1`)** (*Settings → Functions → Region*) — SQ's edge often favours/geo-restricts APAC traffic; and check *Deployments → Functions → Logs* — every upstream anomaly is logged there as `[sq] …`. `SQ_API_BASE` can also point at any compatible proxy you run yourself (e.g. a home-IP tunnel). |
-| *“No flight found”* (`ref: NOT_FOUND`) | Almost always the **date** — menus publish today → +8 days only. Also check the flight operates that day. |
+| *“No flight found”* (`ref: NOT_FOUND`) | The flight/date pair isn't in the menu system yet — check the flight operates that day, or try again closer to departure. |
 | *“No cabins open yet”* (`ref: NO_CABINS`) | Flight exists for that date, but SQ hasn't published cabin menus yet — retry closer to departure. |
 | PWA doesn't offer install | Serve over **HTTPS** (Vercel does), visit at least once, then: Chrome → install icon/menu · iOS Safari → Share → *Add to Home Screen*. |
 | Menu images missing in export | Dish photos are intentionally not embedded (keep exports lean & polite to SQ's CDN). |

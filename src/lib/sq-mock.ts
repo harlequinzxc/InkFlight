@@ -13,7 +13,7 @@
  *  - 478: SIN→JNB→CPT  · 479: CPT→JNB→SIN       (South Africa tag)
  *  - 700: SIN→BCN→MAD→SIN — a 3-sector FUTURE route to prove dynamism
  *  - other flights → single-sector; 200 → only SCL+YCL; YCL → snack bag
- *  - 999 → statusCode 101 · 300 → NO_CABINS · past/+8d → BAD_DATE
+ *  - 999 → statusCode 101 · 300 → NO_CABINS · past/+6wk+ → BAD_DATE
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -257,11 +257,9 @@ function sectorsFromMenu(menu: Json): SectorOption[] | undefined {
   const legs = (menu.legs ?? []) as Array<{ flightDetails?: Json }>;
   const out: SectorOption[] = legs.map((leg, i) => {
     const fd = leg.flightDetails ?? {};
-    const dep = String(fd.departureCityName ?? '');
-    const arr = String(fd.arrivalCityName ?? '');
-    const hhmm = (s: unknown): string => String(s).slice(11, 16);
-    const shift = String(fd.departureLocalDate).slice(0, 10) === String(fd.arrivalLocalDate).slice(0, 10) ? '' : ' +1d';
-    return { seq: i + 1, label: `${dep} → ${arr}  ·  ${hhmm(fd.departureLocalDate)} → ${hhmm(fd.arrivalLocalDate)}${shift}` };
+    const dep = String(fd.departureAirportCode ?? '');
+    const arr = String(fd.arrivalAirportCode ?? '');
+    return { seq: i + 1, label: `${dep} → ${arr}` };
   });
   return out.length > 1 ? out : undefined;
 }
@@ -275,11 +273,11 @@ export async function apiGetCabin(req: IncomingMessage, res: ServerResponse): Pr
     const date = String(body.flightDate ?? body.date ?? '');
     if (!Number.isInteger(fn) || fn < 1 || fn > 9999) throw new SqError('BAD_INPUT', 'That does not look like an SQ flight number.', 400);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new SqError('BAD_INPUT', 'Date must be YYYY-MM-DD.', 400);
-    if (date < isoShift(0) || date > isoShift(8)) {
-      throw new SqError('BAD_DATE', 'That date is outside the menu window — menus publish from today up to 8 days before departure.', 400);
+    if (date < isoShift(0) || date > isoShift(43)) {
+      throw new SqError('BAD_DATE', 'That date is outside the booking window — menus can be checked from today up to 6 weeks ahead.', 400);
     }
     if (fn === 999) {
-      throw new SqError('NOT_FOUND', 'No flight found for that number and date. Menus are typically published from today up to 8 days before departure.', 404);
+      throw new SqError('NOT_FOUND', 'No flight found for that number and date. Check the flight operates that day, or try again closer to departure.', 404);
     }
     if (fn === 300) {
       throw new SqError('NO_CABINS', 'We found the flight, but no menu cabins are open for it yet. Try again closer to departure.', 404);
@@ -305,11 +303,11 @@ export async function apiGetMenu(req: IncomingMessage, res: ServerResponse): Pro
     const cabin = String(body.cabinClass ?? body.cabin ?? '');
     if (!Number.isInteger(fn) || fn < 1 || fn > 9999) throw new SqError('BAD_INPUT', 'That does not look like an SQ flight number.', 400);
     if (!CABIN_ORDER.includes(cabin as CabinCode)) throw new SqError('BAD_INPUT', 'Unknown cabin class.', 400);
-    if (date < isoShift(0) || date > isoShift(8)) {
-      throw new SqError('BAD_DATE', 'That date is outside the menu window — menus publish from today up to 8 days before departure.', 400);
+    if (date < isoShift(0) || date > isoShift(43)) {
+      throw new SqError('BAD_DATE', 'That date is outside the booking window — menus can be checked from today up to 6 weeks ahead.', 400);
     }
     if (fn === 999) {
-      throw new SqError('NOT_FOUND', 'No flight found for that number and date. Menus are typically published from today up to 8 days before departure.', 404);
+      throw new SqError('NOT_FOUND', 'No flight found for that number and date. Check the flight operates that day, or try again closer to departure.', 404);
     }
     const payload = cabin === 'YCL' ? snackBagMenu(fn, date) : fullMenu(fn, date);
     sendJson(res, 200, { ok: true, data: payload });

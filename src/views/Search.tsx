@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import DatePicker from '../components/DatePicker';
-import { addDaysISO, daysBetweenISO, normalizeFlight, prettyDate, todayISO } from '../lib/flight';
+import { addDaysISO, normalizeFlight, prettyDate, todayISO } from '../lib/flight';
 import type { CabinCode, CabinOption, SectorOption } from '../lib/types';
 
 export type CheckState = 'idle' | 'checking' | 'ok' | 'error';
@@ -28,7 +28,7 @@ interface SearchProps {
 
 const ERROR_TITLES: Record<string, string> = {
   NOT_FOUND: 'No flight found',
-  BAD_DATE: 'That date is out of the menu window',
+  BAD_DATE: 'That date is out of the booking window',
   NO_CABINS: 'No cabins open yet',
   UPSTREAM_TIMEOUT: 'The seat pocket didn’t answer',
   UPSTREAM_NETWORK: 'The seat pocket didn’t answer',
@@ -46,19 +46,15 @@ export default function Search(props: SearchProps) {
   const cabinsRef = useRef<HTMLDivElement>(null);
 
   const minISO = useMemo(() => todayISO(), []);
-  const maxISO = useMemo(() => addDaysISO(minISO, 42), [minISO]); // browse up to 6 weeks ahead
-  const windowEndISO = useMemo(() => addDaysISO(minISO, 8), [minISO]);
+  const maxISO = useMemo(() => addDaysISO(minISO, 42), [minISO]); // booking horizon: today → +6 weeks
 
   const gate = normalizeFlight(flightInput);
   const gateValue = gate.ok ? gate.value : '';
   const showPills = gate.ok;
   const tomorrow = addDaysISO(minISO, 1);
 
-  const dateShift = dateISO ? daysBetweenISO(minISO, dateISO) : null;
-  const outOfWindow = dateShift !== null && (dateShift < 0 || dateShift > 8);
-  const dateLabel = dateISO === minISO ? 'Today' : dateISO === tomorrow ? 'Tomorrow' : dateISO ? prettyDate(dateISO) : null;
-
   const sectorMode = checkState === 'ok' && availableSectors !== null && availableSectors.length > 1;
+  const showSectors = sectorMode && selectedCabins.length > 0; // sector step comes AFTER cabin selection
   const readyToFetch = selectedCabins.length > 0 && (!sectorMode || selectedSectors.length > 0);
 
   // auto-scroll the revealed picker into view (small screens)
@@ -87,8 +83,7 @@ export default function Search(props: SearchProps) {
 
       {apiMode === 'mock' && <div className="demo-ribbon">Preview mode — demo menus. Deployments pull live SQ data.</div>}
 
-      <h1 className="search-title">Which flight are we dressing today?</h1>
-      <p className="search-sub">Key in your flight number — we’ll pull the live menu from the seat pocket servers.</p>
+      <h1 className="search-title">Where are we flying today?</h1>
 
       <form
         className="field"
@@ -113,14 +108,10 @@ export default function Search(props: SearchProps) {
           onChange={(e) => onFlightInput(e.target.value)}
           onKeyDown={onFlightKeyDown}
         />
-        {flightInput.trim() !== '' && !gate.ok && (
-          <div className="field-hint">Key in the digits — e.g. <strong>326</strong> or <strong>SQ326</strong>.</div>
-        )}
-        {gate.ok && <div className="field-ok">SQ {gate.value}</div>}
 
         {showPills && (
           <div className="pills-wrap">
-            <div className="pills-label">Travel date</div>
+            <div className="pills-label">Departure date</div>
             <div className="pills">
               <button type="button" className={`pill today${dateISO === minISO ? ' on' : ''}`} onClick={() => onPickDate(minISO)}>
                 Today
@@ -130,21 +121,12 @@ export default function Search(props: SearchProps) {
               </button>
               <button
                 type="button"
-                className={`pill pick${dateISO && dateISO !== minISO && dateISO !== tomorrow ? ` on${outOfWindow ? ' warn' : ''}` : ''}`}
+                className={`pill pick${dateISO && dateISO !== minISO && dateISO !== tomorrow ? ' on' : ''}`}
                 onClick={() => setPickerOpen(true)}
               >
-                {dateLabel && dateISO && dateISO !== minISO && dateISO !== tomorrow ? dateLabel : 'Pick a date…'}
+                {dateISO && dateISO !== minISO && dateISO !== tomorrow ? prettyDate(dateISO) : 'Pick a date…'}
               </button>
             </div>
-            {dateISO && outOfWindow ? (
-              <div className="pills-note warn">
-                {prettyDate(dateISO)} is beyond the 8-day menu window — the menu service won’t have it yet.
-              </div>
-            ) : (
-              <div className="pills-note">
-                Menus are published up to 8 days before departure — anything further out will show “no flight found”.
-              </div>
-            )}
           </div>
         )}
 
@@ -161,8 +143,8 @@ export default function Search(props: SearchProps) {
           <div className="error-msg">
             {error.code === 'NOT_FOUND' ? (
               <>
-                <strong>SQ {gateValue}</strong> on <strong>{dateISO ? prettyDate(dateISO) : ''}</strong> isn’t in the menu system. Menus appear from
-                today up to 8 days before departure — try a date closer to today.
+                <strong>SQ {gateValue}</strong> on <strong>{dateISO ? prettyDate(dateISO) : ''}</strong> isn’t in the menu system yet. Check the flight
+                operates that day, or try again closer to departure.
               </>
             ) : (
               error.message
@@ -180,12 +162,10 @@ export default function Search(props: SearchProps) {
       <div ref={cabinsRef}>
         {checkState === 'ok' && (
           <div className="cabins-wrap">
-            {/* SECTORS FIRST — discovered live from the flight's legs[] */}
-            {sectorMode && availableSectors && (
-              <div className="sectors-wrap">
-                <div className="pills-label" aria-live="polite">
-                  Sectors on <strong>SQ {gateValue}</strong> · {dateISO ? prettyDate(dateISO) : ''} — multi-sector service, pick what you’re printing
-                </div>
+            {/* STEP: sectors — only for multi-sector flights, only after a cabin is picked */}
+            {showSectors && availableSectors && (
+              <div className="sectors-wrap card-in">
+                <div className="pills-label">Sectors available</div>
                 <div className="cabin-cards">
                   {availableSectors.map((s, i) => {
                     const on = selectedSectors.includes(s.seq);
@@ -193,7 +173,7 @@ export default function Search(props: SearchProps) {
                       <button
                         type="button"
                         key={s.seq}
-                        className={`cabin-card sector-card card-in${on ? ' on' : ''}${fetching ? ' busy' : ''}`}
+                        className={`cabin-card card-in${on ? ' on' : ''}${fetching ? ' busy' : ''}`}
                         style={{ animationDelay: `${i * 70}ms` }}
                         onClick={() => props.onToggleSector(s.seq)}
                         disabled={fetching}
@@ -201,28 +181,17 @@ export default function Search(props: SearchProps) {
                       >
                         <span className="card-code">Sector {s.seq}</span>
                         <span className="card-short">{s.label}</span>
-                        <span className="card-sub">{on ? '✓ Own sheet' : 'Add sector'}</span>
                         <span className="card-tick">{on ? '✓' : ''}</span>
                       </button>
                     );
                   })}
                 </div>
-                <div className="pills-note">Each selected sector is compiled as its own sheet — flip between them in the editor.</div>
               </div>
             )}
 
-            <div className={sectorMode ? 'cabins-after-sectors' : ''}>
-              <div className="pills-label" aria-live={sectorMode ? undefined : 'polite'}>
-                {sectorMode ? (
-                  <>
-                    Cabin classes on <strong>SQ {gateValue}</strong> — pick all that apply
-                  </>
-                ) : (
-                  <>
-                    Cabins available on <strong>SQ {gateValue}</strong> · {dateISO ? prettyDate(dateISO) : ''}
-                    {cabinOptions.length > 1 ? ' — pick all that apply' : ''}
-                  </>
-                )}
+            <div className={showSectors ? 'cabins-after-sectors' : ''}>
+              <div className="pills-label" aria-live="polite">
+                Cabins available
               </div>
               <div className="cabin-cards">
                 {cabinOptions.map((c, i) => {
@@ -232,14 +201,13 @@ export default function Search(props: SearchProps) {
                       type="button"
                       key={c.code}
                       className={`cabin-card card-in${on ? ' on' : ''}${fetching ? ' busy' : ''}`}
-                      style={{ animationDelay: `${i * 70 + (sectorMode ? 120 : 0)}ms` }}
+                      style={{ animationDelay: `${i * 70 + (showSectors ? 120 : 0)}ms` }}
                       onClick={() => props.onToggleCabin(c.code)}
                       disabled={fetching}
                       aria-pressed={on}
                     >
                       <span className="card-code">{c.code}</span>
                       <span className="card-short">{c.short}</span>
-                      <span className="card-sub">{on ? '✓ On the sheet' : 'View menu'}</span>
                       <span className="card-tick">{on ? '✓' : ''}</span>
                     </button>
                   );
@@ -257,16 +225,11 @@ export default function Search(props: SearchProps) {
                   ) : (
                     <>
                       Fetch menu
-                      {sectorMode && selectedSectors.length > 0 ? ` · ${selectedSectors.length} sector${selectedSectors.length > 1 ? 's' : ''}` : ''}
+                      {showSectors && selectedSectors.length > 0 ? ` · ${selectedSectors.length} sector${selectedSectors.length > 1 ? 's' : ''}` : ''}
                       {selectedCabins.length > 1 ? ` · ${selectedCabins.length} cabins` : ''}
                     </>
                   )}
                 </button>
-                <div className="fetch-note">
-                  {sectorMode
-                    ? 'One sheet per sector, each showing all selected cabins.'
-                    : 'All selected cabins will be compiled onto one menu sheet.'}
-                </div>
               </div>
             )}
           </div>
@@ -277,7 +240,6 @@ export default function Search(props: SearchProps) {
         <DatePicker
           minISO={minISO}
           maxISO={maxISO}
-          menuWindowEndISO={windowEndISO}
           value={dateISO}
           onPick={(iso) => {
             setPickerOpen(false);

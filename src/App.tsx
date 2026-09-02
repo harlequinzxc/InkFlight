@@ -4,7 +4,7 @@ import Landing from './views/Landing';
 import Search, { type CheckState } from './views/Search';
 import Editor from './views/Editor';
 import { ApiFailure, fetchCabins, fetchMenu } from './lib/api';
-import { addDaysISO, daysBetweenISO, normalizeFlight, prettyDate, todayISO } from './lib/flight';
+import { normalizeFlight, prettyDate, todayISO } from './lib/flight';
 import { buildDoc } from './lib/normalize';
 import { CABIN_ORDER, type CabinCode, type CabinOption, type LayoutKind, type MenuDoc, type PaperSize, type SectorOption } from './lib/types';
 
@@ -124,18 +124,6 @@ export default function App() {
     setStaleNotice(false);
   }, []);
 
-  const outOfWindow = useCallback((date: string): boolean => {
-    const shift = daysBetweenISO(todayISO(), date);
-    return shift < 0 || shift > 8;
-  }, []);
-
-  const windowErrorFor = useCallback((date: string): { code: string; message: string } => {
-    return {
-      code: 'BAD_DATE',
-      message: `${prettyDate(date)} is outside the menu window. Menus publish from today up to 8 days before departure — pick a date between ${prettyDate(todayISO())} and ${prettyDate(addDaysISO(todayISO(), 8))}.`
-    };
-  }, []);
-
   const runCheck = useCallback((flight: string, date: string, token: number, signal: AbortSignal): void => {
     setCheckState('checking');
     setError(null);
@@ -151,13 +139,13 @@ export default function App() {
         setStaleNotice(stale);
         // Sectors are discovered LIVE from the flight's legs[] (server-side) —
         // any current or future multi-sector service is picked up automatically.
+        // Nothing is pre-selected; the picker reveals once a cabin is chosen.
         if (data.sectors && data.sectors.length > 1) {
           setAvailableSectors(data.sectors);
-          setSelectedSectors(data.sectors.map((s) => s.seq)); // default: whole run
         } else {
           setAvailableSectors(null);
-          setSelectedSectors([]);
         }
+        setSelectedSectors([]);
       })
       .catch((err: unknown) => {
         if (token !== fetchTokenRef.current) return;
@@ -186,15 +174,9 @@ export default function App() {
     (flight: string, date: string): void => {
       const gate = normalizeFlight(flight);
       if (!gate.ok || !date || checkState === 'checking' || fetching) return;
-      if (outOfWindow(date)) {
-        checkAbortRef.current?.abort();
-        setCheckState('error');
-        setError(windowErrorFor(date));
-        return;
-      }
       launchCheck(gate.value, date);
     },
-    [checkState, fetching, launchCheck, outOfWindow, windowErrorFor]
+    [checkState, fetching, launchCheck]
   );
 
   const pickDate = useCallback(
@@ -202,18 +184,13 @@ export default function App() {
       setDateISO(iso);
       // results are per flight+date pair — any change discards them instantly;
       // if the flight is already valid, check the NEW date automatically.
+      // (Booking-window validation lives server-side: today → +6 weeks.)
       const gate = normalizeFlight(flightInput);
       resetResults();
       if (!gate.ok) return;
-      if (outOfWindow(iso)) {
-        checkAbortRef.current?.abort();
-        setCheckState('error');
-        setError(windowErrorFor(iso));
-        return;
-      }
       launchCheck(gate.value, iso);
     },
-    [flightInput, launchCheck, outOfWindow, resetResults, windowErrorFor]
+    [flightInput, launchCheck, resetResults]
   );
 
   const checkTimerRef = useRef<number | undefined>(undefined);
@@ -226,12 +203,12 @@ export default function App() {
       // if a date is already chosen, re-check automatically — debounced,
       // never per keystroke
       const gate = normalizeFlight(v);
-      if (gate.ok && dateISO && !outOfWindow(dateISO)) {
+      if (gate.ok && dateISO) {
         const date = dateISO;
         checkTimerRef.current = window.setTimeout(() => launchCheck(gate.value, date), 650);
       }
     },
-    [dateISO, launchCheck, outOfWindow, resetResults]
+    [dateISO, launchCheck, resetResults]
   );
 
   /** Enter key / Retry — bypasses the debounce. */

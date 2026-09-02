@@ -19,7 +19,6 @@
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { CABIN_META, CABIN_ORDER, type CabinCode, type CabinOption, type SectorOption } from './types';
-import { dayShiftLabel, durationFromUtc, parseStamp } from './flight';
 
 // ---------------------------------------------------------------------------
 // Endpoints & headers
@@ -241,7 +240,7 @@ function assertBodyStatus(json: unknown): void {
     if (sc === 101) {
       throw new SqError(
         'NOT_FOUND',
-        'No flight found for that number and date. Menus are typically published from today up to 8 days before departure.',
+        'No flight found for that number and date. Check the flight operates that day, or try again closer to departure.',
         404
       );
     }
@@ -253,20 +252,20 @@ function assertBodyStatus(json: unknown): void {
 // Public operations
 // ---------------------------------------------------------------------------
 
-/** Server-side date window — allows ±1 day of slack for timezone skew
- *  (the client gates strictly on its LOCAL today…today+8; the server runs UTC). */
+/** Server-side date window: today … +6 weeks (the live menu site's horizon),
+ *  with ±1 day of slack for timezone skew (the server runs UTC). */
 function assertDateWindow(flightDate: string): void {
   const now = new Date();
   const iso = (d: Date): string =>
     `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
   const today = new Date(`${iso(now)}T00:00:00Z`);
   const min = new Date(today.getTime() - 86_400_000);
-  const max = new Date(today.getTime() + 9 * 86_400_000);
+  const max = new Date(today.getTime() + 43 * 86_400_000);
   const d = new Date(`${flightDate}T00:00:00Z`);
   if (Number.isNaN(d.getTime()) || d < min || d > max) {
     throw new SqError(
       'BAD_DATE',
-      'That date is outside the menu window — menus publish from today up to 8 days before departure.',
+      'That date is outside the booking window — menus can be checked from today up to 6 weeks ahead.',
       400
     );
   }
@@ -295,8 +294,8 @@ function normalizeCabins(raw: unknown): CabinOption[] {
 
 /**
  * Derive the sector list straight from the live legs[] — never hardcoded.
- * Labels carry real stations and local times, in the exact order the menu
- * system returns, so the picker always matches what the editor will render.
+ * Labels are the 3-letter IATA station pair (e.g. "SIN → NRT"), in the exact
+ * order the menu system returns, so the picker always matches the flight.
  */
 function sectorOptionsFrom(payload: unknown): SectorOption[] | undefined {
   const legs = (payload as { legs?: unknown } | null)?.legs;
@@ -304,16 +303,10 @@ function sectorOptionsFrom(payload: unknown): SectorOption[] | undefined {
   const out: SectorOption[] = [];
   legs.forEach((leg, i) => {
     const fd = (leg as { flightDetails?: Record<string, unknown> } | null)?.flightDetails ?? {};
-    const dep = String(fd.departureCityName || fd.departureAirportCode || '').trim();
-    const arr = String(fd.arrivalCityName || fd.arrivalAirportCode || '').trim();
+    const dep = String(fd.departureAirportCode || fd.departureCityName || '').trim();
+    const arr = String(fd.arrivalAirportCode || fd.arrivalCityName || '').trim();
     if (!dep || !arr) return;
-    const d = parseStamp(fd.departureLocalDate);
-    const a = parseStamp(fd.arrivalLocalDate);
-    const shift = dayShiftLabel(fd.departureLocalDate, fd.arrivalLocalDate);
-    const dur = durationFromUtc(fd.departureUtcDate, fd.arrivalUtcDate);
-    const times = d.valid && a.valid ? `${d.hhmm} → ${a.hhmm}${shift ? ' ' + shift : ''}` : '';
-    const meta = [times, dur].filter(Boolean).join(' · ');
-    out.push({ seq: i + 1, label: meta ? `${dep} → ${arr}  ·  ${meta}` : `${dep} → ${arr}` });
+    out.push({ seq: i + 1, label: `${dep} → ${arr}` });
   });
   return out.length > 1 ? out : undefined;
 }

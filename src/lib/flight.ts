@@ -9,10 +9,6 @@ export function normalizeFlight(raw: string): { ok: true; value: string } | { ok
   return { ok: true, value: String(n) };
 }
 
-export function flightLabelOf(flightNumber: string): string {
-  return `SQ ${flightNumber}`;
-}
-
 // ---------------------------------------------------------------------------
 // Dates — all local-device time; "YYYY-MM-DD" keys everywhere
 // ---------------------------------------------------------------------------

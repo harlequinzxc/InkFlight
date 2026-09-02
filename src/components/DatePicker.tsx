@@ -1,11 +1,9 @@
 import { useMemo, useState } from 'react';
-import { addDaysISO, daysBetweenISO, dowShorts, monthName, todayISO } from '../lib/flight';
+import { dowShorts, monthName } from '../lib/flight';
 
 interface DatePickerProps {
   minISO: string;
   maxISO: string;
-  /** last day on which menus are realistically published (today + 8) */
-  menuWindowEndISO: string;
   value: string | null;
   onPick: (iso: string) => void;
   onClose: () => void;
@@ -15,10 +13,9 @@ interface DayCell {
   iso: string;
   day: number;
   disabled: boolean;
-  inWindow: boolean;
 }
 
-export default function DatePicker({ minISO, maxISO, menuWindowEndISO, value, onPick, onClose }: DatePickerProps) {
+export default function DatePicker({ minISO, maxISO, value, onPick, onClose }: DatePickerProps) {
   const [cursor, setCursor] = useState(() => {
     const base = value ?? minISO;
     return { y: Number(base.slice(0, 4)), m: Number(base.slice(5, 7)) - 1 };
@@ -34,16 +31,15 @@ export default function DatePicker({ minISO, maxISO, menuWindowEndISO, value, on
     for (let i = 0; i < startPad; i++) cells.push(null);
     for (let d = 1; d <= daysInMonth; d++) {
       const iso = `${cursor.y}-${String(cursor.m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      const disabled = iso < minISO || iso > maxISO;
-      cells.push({ iso, day: d, disabled, inWindow: iso <= menuWindowEndISO });
+      cells.push({ iso, day: d, disabled: iso < minISO || iso > maxISO });
     }
     while (cells.length % 7 !== 0) cells.push(null);
     const rows: DayCell[][] = [];
     for (let i = 0; i < cells.length; i += 7) {
-      rows.push(cells.slice(i, i + 7).map((c) => c ?? ({ iso: '', day: 0, disabled: true, inWindow: false } as DayCell)));
+      rows.push(cells.slice(i, i + 7).map((c) => c ?? ({ iso: '', day: 0, disabled: true } as DayCell)));
     }
     return rows;
-  }, [cursor, minISO, maxISO, menuWindowEndISO]);
+  }, [cursor, minISO, maxISO]);
 
   const canPrev = cursor.y > Number(minISO.slice(0, 4)) || cursor.m > Number(minISO.slice(5, 7)) - 1;
   const canNext = cursor.y < maxD.y || cursor.m < maxD.m;
@@ -82,23 +78,15 @@ export default function DatePicker({ minISO, maxISO, menuWindowEndISO, value, on
                 type="button"
                 key={i}
                 disabled={cell.disabled}
-                className={`dp-cell${cell.disabled ? ' disabled' : ''}${cell.iso === value ? ' selected' : ''}${cell.inWindow ? '' : ' outside-window'}`}
+                className={`dp-cell${cell.disabled ? ' disabled' : ''}${cell.iso === value ? ' selected' : ''}`}
                 onClick={() => onPick(cell.iso)}
-                title={cell.inWindow ? undefined : 'Menus are rarely published this far ahead'}
               >
                 {cell.day}
-                {cell.inWindow && cell.iso >= minISO ? <i className="dp-dot" /> : null}
               </button>
             )
           )}
-        </div>
-        <div className="dp-foot">
-          <span><i className="dp-dot legend" /> menu window (up to 8 days ahead)</span>
-          <span className="dp-range">Booking window: today → +6 weeks</span>
         </div>
       </div>
     </>
   );
 }
-
-export const datepickerHelpers = { addDaysISO, daysBetweenISO, todayISO };
