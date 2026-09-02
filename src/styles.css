@@ -367,6 +367,18 @@ body {
   color: var(--text-dim);
 }
 
+.demo-ribbon {
+  margin: 0 0 16px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: #ecd08a;
+  background: rgba(224, 179, 77, 0.09);
+  border: 1px dashed rgba(224, 179, 77, 0.4);
+  border-radius: 999px;
+  padding: 7px 14px;
+  text-align: center;
+}
+
 .checking {
   display: flex;
   align-items: center;

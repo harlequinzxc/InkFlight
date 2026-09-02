@@ -57,6 +57,7 @@ export default function App() {
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
   const [staleNotice, setStaleNotice] = useState(false);
   const [fetching, setFetching] = useState(false);
+  const [apiMode, setApiMode] = useState<'mock' | 'live' | null>(null);
 
   // ---- editor state ----
   const [prefs, setPrefs] = useState<Prefs>(() => ({ ...DEFAULT_PREFS, ...loadJSON<Partial<Prefs>>(PREFS_KEY) }));
@@ -120,8 +121,9 @@ export default function App() {
     setCabinOptions([]);
     setSelectedCabins([]);
     try {
-      const { data, stale } = await fetchCabins(flight, date, signal);
+      const { data, stale, mode } = await fetchCabins(flight, date, signal);
       if (token !== fetchTokenRef.current) return;
+      setApiMode(mode);
       setCabinOptions(data.cabins);
       setCheckState('ok');
       setStaleNotice(stale);
@@ -133,42 +135,100 @@ export default function App() {
     }
   }, []);
 
-  /** Gate 1 + date window OFFLINE, then one network call. Never per keystroke. */
+  const windowErrorFor = useCallback((date: string): { code: string; message: string } => {
+    return {
+      code: 'BAD_DATE',
+      message: `${prettyDate(date)} is outside the menu window. Menus publish from today up to 8 days before departure — pick a date between ${prettyDate(todayISO())} and ${prettyDate(addDaysISO(todayISO(), 8))}.`
+    };
+  }, []);
+
+  const outOfWindow = useCallback((date: string): boolean => {
+    const shift = daysBetweenISO(todayISO(), date);
+    return shift < 0 || shift > 8;
+  }, []);
+
+  /** Gate 1 + window offline, then ONE network call. Triggered automatically
+   *  as soon as both inputs are valid — no submit button. */
+  const triggerCheck = useCallback(
+    (flight: string, date: string): void => {
+      const gate = normalizeFlight(flight);
+      if (!gate.ok || !date || checkState === 'checking' || fetching) return;
+      if (outOfWindow(date)) {
+        checkAbortRef.current?.abort();
+        setCheckState('error');
+        setError(windowErrorFor(date));
+        return;
+      }
+      checkAbortRef.current?.abort();
+      const ctrl = new AbortController();
+      checkAbortRef.current = ctrl;
+      const token = ++fetchTokenRef.current;
+      void runCheck(gate.value, date, token, ctrl.signal);
+    },
+    [checkState, fetching, outOfWindow, runCheck, windowErrorFor]
+  );
+
+  /** Enter key / Retry — bypasses the debounce. */
   const submitCheck = useCallback((): void => {
     const gate = normalizeFlight(flightInput);
     if (!gate.ok || !dateISO || checkState === 'checking' || fetching) return;
-    const shift = daysBetweenISO(todayISO(), dateISO);
-    if (shift < 0 || shift > 8) {
-      // blocked BEFORE any network call — menus publish today → +8 days
-      setCheckState('error');
-      setError({
-        code: 'BAD_DATE',
-        message: `${prettyDate(dateISO)} is outside the menu window. Menus publish from today up to 8 days before departure — pick a date between ${prettyDate(todayISO())} and ${prettyDate(addDaysISO(todayISO(), 8))}.`
-      });
-      return;
-    }
-    checkAbortRef.current?.abort();
-    const ctrl = new AbortController();
-    checkAbortRef.current = ctrl;
-    const token = ++fetchTokenRef.current;
-    void runCheck(gate.value, dateISO, token, ctrl.signal);
-  }, [flightInput, dateISO, checkState, fetching, runCheck]);
+    triggerCheck(gate.value, dateISO);
+  }, [flightInput, dateISO, checkState, fetching, triggerCheck]);
 
   const pickDate = useCallback(
     (iso: string): void => {
       setDateISO(iso);
-      // results are per flight+date pair — any change discards them instantly
-      discardCheck();
+      // results are per flight+date pair — any change discards them instantly;
+      // if the flight is already valid, check the NEW date automatically.
+      const gate = normalizeFlight(flightInput);
+      setCheckState('idle');
+      setError(null);
+      setCabinOptions([]);
+      setSelectedCabins([]);
+      setStaleNotice(false);
+      if (!gate.ok) return;
+      if (outOfWindow(iso)) {
+        checkAbortRef.current?.abort();
+        setCheckState('error');
+        setError(windowErrorFor(iso));
+        return;
+      }
+      checkAbortRef.current?.abort();
+      const ctrl = new AbortController();
+      checkAbortRef.current = ctrl;
+      const token = ++fetchTokenRef.current;
+      void runCheck(gate.value, iso, token, ctrl.signal);
     },
-    [discardCheck]
+    [flightInput, outOfWindow, runCheck, windowErrorFor]
   );
+
+  const checkTimerRef = useRef<number | undefined>(undefined);
 
   const onFlightInput = useCallback(
     (v: string): void => {
       setFlightInput(v);
-      discardCheck();
+      // results are per flight+date pair — discard instantly on change
+      setCheckState('idle');
+      setError(null);
+      setCabinOptions([]);
+      setSelectedCabins([]);
+      setStaleNotice(false);
+      window.clearTimeout(checkTimerRef.current);
+      // if a date is already chosen, re-check automatically — debounced,
+      // never per keystroke
+      const gate = normalizeFlight(v);
+      if (gate.ok && dateISO && !outOfWindow(dateISO)) {
+        const date = dateISO;
+        checkTimerRef.current = window.setTimeout(() => {
+          checkAbortRef.current?.abort();
+          const ctrl = new AbortController();
+          checkAbortRef.current = ctrl;
+          const token = ++fetchTokenRef.current;
+          void runCheck(gate.value, date, token, ctrl.signal);
+        }, 650);
+      }
     },
-    [discardCheck]
+    [dateISO, outOfWindow, runCheck]
   );
 
   const toggleCabin = useCallback((c: CabinCode): void => {
@@ -281,6 +341,7 @@ export default function App() {
           error={error}
           staleNotice={staleNotice}
           onSubmitCheck={submitCheck}
+          apiMode={apiMode}
           fetching={fetching}
           onFetch={() => void startFetch()}
           onBack={() => (window.history.state?.view === 'search' ? window.history.back() : navigate('landing', false))}

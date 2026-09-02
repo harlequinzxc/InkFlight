@@ -104,12 +104,23 @@ npm run preview    # serve the build
 
 | Symptom | Cause & fix |
 |---|---|
-| *“…served a web page instead of the menu API”* / `ref: UPSTREAM_HTTP` | The deployment has **no `/api` functions** — you deployed a branch/commit without the `api/` folder, or the deploy predates the app. Redeploy the latest commit of the correct branch; check *Vercel → Deployments → Functions* lists `api/getcabin` & `api/menu`. |
-| *“…timed out at the server”* / `ref: UPSTREAM_TIMEOUT` | The upstream SQ service didn't answer within the serverless budget. Retry; if it persists from a given region, the SQ endpoint may be throttling datacenter IPs. |
-| *“Could not reach the menu service”* / `ref: UPSTREAM_NETWORK` | Server couldn't open a connection to SQ (offline sandbox, firewall, or SQ blocking). Retry; check Vercel function logs (*Deployments → Functions → Logs*). |
-| *“No flight found”* | Almost always the **date** — menus publish today → +8 days only. Also check the flight operates that day. |
+| *“…served a web page instead of the menu API”* / `ref: UPSTREAM_HTTP` | The deployment has **no `/api` functions** — you deployed a branch/commit without the `api/` folder, or the deploy predates the app. Redeploy the latest commit of the correct branch; check *Vercel → Deployments → Functions* lists `api/cabins` & `api/menu`. |
+| *“…menu service is temporarily unreachable”* / `ref: UPSTREAM_TIMEOUT` / `UPSTREAM_NETWORK` / `UPSTREAM_HTTP` | The **SQ endpoint didn't answer the datacenter request**. The functions retry automatically within the time budget. If it persists: set the project's **function region to Singapore (`sin1`)** (*Settings → Functions → Region*) — SQ's edge often favours/geo-restricts APAC traffic; and check *Deployments → Functions → Logs* — every upstream anomaly is logged there as `[sq] …`. `SQ_API_BASE` can also point at any compatible proxy you run yourself (e.g. a home-IP tunnel). |
+| *“No flight found”* (`ref: NOT_FOUND`) | Almost always the **date** — menus publish today → +8 days only. Also check the flight operates that day. |
+| *“No cabins open yet”* (`ref: NO_CABINS`) | Flight exists for that date, but SQ hasn't published cabin menus yet — retry closer to departure. |
 | PWA doesn't offer install | Serve over **HTTPS** (Vercel does), visit at least once, then: Chrome → install icon/menu · iOS Safari → Share → *Add to Home Screen*. |
 | Menu images missing in export | Dish photos are intentionally not embedded (keep exports lean & polite to SQ's CDN). |
+
+### Live-pull notes (from the observed contract)
+
+- Every response is checked for **both** signals — HTTP status **and** the body's
+  `statusCode` (200 ok · 101 not found · anything else typed `UPSTREAM_HTTP`).
+- Requests carry the documented headers (`Origin`, `Referer`, browser
+  `User-Agent`, JSON content type) and a fresh `sessionId` UUID per call;
+  `checksum` is omitted by design.
+- The upstream timeout is deadline-budgeted inside the serverless function
+  (≤ ~8.6 s incl. one fast retry) so the function **always** answers typed JSON
+  within the platform's 10 s cap — you never get a platform timeout page.
 
 Quick deployment probe:
 

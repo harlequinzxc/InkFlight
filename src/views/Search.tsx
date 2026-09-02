@@ -17,6 +17,7 @@ interface SearchProps {
   error: { code: string; message: string } | null;
   staleNotice: boolean;
   onSubmitCheck: () => void;
+  apiMode: 'mock' | 'live' | null;
   fetching: boolean;
   onFetch: () => void;
   onBack: () => void;
@@ -33,7 +34,7 @@ const ERROR_TITLES: Record<string, string> = {
 };
 
 export default function Search(props: SearchProps) {
-  const { flightInput, onFlightInput, dateISO, onPickDate, checkState, cabinOptions, selectedCabins, error, staleNotice, fetching } = props;
+  const { flightInput, onFlightInput, dateISO, onPickDate, checkState, cabinOptions, selectedCabins, error, staleNotice, apiMode, fetching } = props;
   const [pickerOpen, setPickerOpen] = useState(false);
   const cabinsRef = useRef<HTMLDivElement>(null);
 
@@ -74,6 +75,8 @@ export default function Search(props: SearchProps) {
       <button type="button" className="backlink" onClick={props.onBack}>
         ‹ Home
       </button>
+
+      {apiMode === 'mock' && <div className="demo-ribbon">Preview mode — demo menus. Deployments pull live SQ data.</div>}
 
       <h1 className="search-title">Which flight are we dressing today?</h1>
       <p className="search-sub">Key in your flight number — we’ll pull the live menu from the seat pocket servers.</p>
@@ -136,17 +139,9 @@ export default function Search(props: SearchProps) {
           </div>
         )}
 
-        {checkState !== 'ok' && (
-          <div className="submitrow">
-            <button type="submit" className="btn btn-primary btn-lg check-btn" disabled={!canCheck}>
-              {checkState === 'checking' ? (
-                <>
-                  <span className="ring ring-sm" /> Checking cabins…
-                </>
-              ) : (
-                'Check flight'
-              )}
-            </button>
+        {checkState !== 'ok' && checkState === 'checking' && (
+          <div className="checking" role="status" aria-live="polite">
+            <span className="ring ring-sm" /> <span>Checking cabins…</span>
           </div>
         )}
       </form>

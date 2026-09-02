@@ -165,9 +165,9 @@ interface UpstreamBody {
   sessionId: string;
 }
 
-async function callUpstream(path: string, body: UpstreamBody): Promise<{ http: number; json: unknown }> {
+async function callUpstream(path: string, body: UpstreamBody, timeoutMs = TIMEOUT_MS): Promise<{ http: number; json: unknown }> {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   let res: Response;
   try {
     res = await fetch(`${BASE}/${path}`, {
@@ -183,6 +183,7 @@ async function callUpstream(path: string, body: UpstreamBody): Promise<{ http: n
     });
   } catch (err) {
     if (ctrl.signal.aborted) throw new SqError('UPSTREAM_TIMEOUT', 'The menu service is temporarily unreachable. Please retry in a moment.', 504);
+    console.error(`[sq] ${path} network failure:`, err instanceof Error ? err.message : err);
     throw new SqError('UPSTREAM_NETWORK', 'The menu service is temporarily unreachable. Please retry in a moment.', 502);
   } finally {
     clearTimeout(timer);
@@ -192,10 +193,41 @@ async function callUpstream(path: string, body: UpstreamBody): Promise<{ http: n
   try {
     json = await res.json();
   } catch {
-    throw new SqError('UPSTREAM_HTTP', 'The menu service returned a malformed response.', 502);
+    console.error(`[sq] ${path} HTTP ${res.status} returned a non-JSON body (length ${Number(res.headers.get('content-length')) || '?'}) — upstream may be blocking datacenter requests or an edge page intervened.`);
+    throw new SqError('UPSTREAM_HTTP', 'The menu service is temporarily unreachable. Please retry in a moment.', 502);
   }
-  if (!res.ok) throw new SqError('UPSTREAM_HTTP', `The menu service returned HTTP ${res.status}.`, 502);
+  if (!res.ok) {
+    console.error(`[sq] ${path} HTTP ${res.status} with body statusCode ${(json as { statusCode?: number })?.statusCode}`);
+    throw new SqError('UPSTREAM_HTTP', `The menu service answered HTTP ${res.status}.`, 502);
+  }
   return { http: res.status, json };
+}
+
+/**
+ * Deadline-budgeted call: the serverless function has a hard wall-clock cap,
+ * so we retry transient upstream failures only while time actually remains
+ * (one fast retry). `statusCode 101` NOT_FOUND is thrown by the caller and
+ * is deliberately NEVER retried — it is a real answer, not a failure.
+ */
+const DEADLINE_MS = 8_600;
+async function callUpstreamWithRetry(path: string, body: UpstreamBody): Promise<{ http: number; json: unknown }> {
+  const start = Date.now();
+  let attempt = 0;
+  for (;;) {
+    const remaining = DEADLINE_MS - (Date.now() - start);
+    try {
+      return await callUpstream(path, body, Math.min(6_000, Math.max(1_500, remaining)));
+    } catch (err) {
+      const retryable = err instanceof SqError && (err.code === 'UPSTREAM_TIMEOUT' || err.code === 'UPSTREAM_NETWORK' || err.code === 'UPSTREAM_HTTP');
+      const timeLeft = DEADLINE_MS - (Date.now() - start);
+      if (retryable && attempt < 2 && timeLeft >= 2_200) {
+        attempt += 1;
+        await new Promise((r) => setTimeout(r, 300 * attempt));
+        continue;
+      }
+      throw err;
+    }
+  }
 }
 
 /**
@@ -268,7 +300,7 @@ export async function getCabins(q: SqQuery): Promise<CabinCheckResult & { stale?
   if (hit && Date.now() - hit.at < hit.ttlMs) return hit.payload as CabinCheckResult;
 
   try {
-    const { json } = await callUpstream('getcabin', {
+    const { json } = await callUpstreamWithRetry('getcabin', {
       carrierId: 'SQ',
       flightNumber,
       flightDate,
@@ -301,7 +333,7 @@ export async function getMenu(q: SqQuery): Promise<{ data: unknown; stale?: bool
   if (hit && Date.now() - hit.at < hit.ttlMs) return { data: hit.payload };
 
   try {
-    const { json } = await callUpstream('menu', {
+    const { json } = await callUpstreamWithRetry('menu', {
       carrierId: 'SQ',
       flightNumber,
       flightDate,

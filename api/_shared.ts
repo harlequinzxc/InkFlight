@@ -34,6 +34,7 @@ export async function handleApiRequest(
   }
 
   const useMock = process.env.SQ_API_BASE === 'mock';
+  res.setHeader('x-inkflight-mode', useMock ? 'mock' : 'live');
   if (kind === 'cabins') return (useMock ? mockGetCabin : realGetCabin)(req, res);
   return (useMock ? mockGetMenu : realGetMenu)(req, res);
 }

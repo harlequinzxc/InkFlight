@@ -27,7 +27,7 @@ function unreadableHint(status: number): string {
   return `The service answered HTTP ${status} with an unreadable body. Try again.`;
 }
 
-async function request<T>(path: string, init: RequestInit): Promise<{ data: T; stale: boolean }> {
+async function request<T>(path: string, init: RequestInit): Promise<{ data: T; stale: boolean; mode: 'mock' | 'live' | null }> {
   let res: Response;
   try {
     res = await fetch(path, init);
@@ -35,6 +35,7 @@ async function request<T>(path: string, init: RequestInit): Promise<{ data: T; s
     if (err instanceof DOMException && err.name === 'AbortError') throw err; // caller decides (race guard)
     throw new ApiFailure({ code: 'UPSTREAM_NETWORK', message: 'You appear to be offline. Check your connection and try again.' });
   }
+  const mode = res.headers.get('x-inkflight-mode') === 'mock' ? 'mock' : res.headers.get('x-inkflight-mode') === 'live' ? 'live' : null;
 
   const text = await res.text();
   let env: ApiEnvelope<T> | null = null;
@@ -49,7 +50,7 @@ async function request<T>(path: string, init: RequestInit): Promise<{ data: T; s
   if (!env.ok || !env.data) {
     throw new ApiFailure(env.error ?? { code: 'UPSTREAM_HTTP', message: 'Unknown service error.' });
   }
-  return { data: env.data, stale: env.stale === true };
+  return { data: env.data, stale: env.stale === true, mode };
 }
 
 function withTimeout(signal: AbortSignal | undefined): { signal: AbortSignal; done: () => void } {
@@ -77,7 +78,7 @@ export async function fetchCabins(
   flightNumber: string,
   flightDate: string,
   signal?: AbortSignal
-): Promise<{ data: CabinCheckData; stale: boolean }> {
+): Promise<{ data: CabinCheckData; stale: boolean; mode: 'mock' | 'live' | null }> {
   const t = withTimeout(signal);
   try {
     return await request<CabinCheckData>(
@@ -97,12 +98,13 @@ export async function fetchMenu(
 ): Promise<{ data: unknown; stale: boolean }> {
   const t = withTimeout(signal);
   try {
-    return await request<unknown>('/api/menu', {
+    const r = await request<unknown>('/api/menu', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ flightNumber, flightDate, cabinClass }),
       signal: t.signal
     });
+    return { data: r.data, stale: r.stale };
   } finally {
     t.done();
   }
