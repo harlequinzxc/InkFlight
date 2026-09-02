@@ -1,11 +1,19 @@
 /**
  * Paper — the printable menu sheet, rendered at true mm dimensions.
- * Two layouts: `elegant` (fancy restaurant, single page) and `compact`
- * (minimal gaps, one-look). Optimised for html2canvas-pro capture:
- * plain hex colours, no oklch, no shadows on the sheet, gradients only linear.
+ *
+ * Two layouts:
+ *  · `elegant` — modelled on the SQ seatback menu card: route rail top-left,
+ *    serif service title, navy rule, then a course timeline (labels on a left
+ *    rail, ring markers on a vertical line, dishes on the right).
+ *  · `compact` — modelled on the crew one-look sheet: per-service header line
+ *    (SQ265 (→ BNE) JCL (LUNCH) 020926), then COURSE: DISHES with hanging
+ *    continuation lines. Names only, all caps.
+ *
+ * Optimised for html2canvas-pro capture: plain hex colours, no shadows on the
+ * sheet, real DOM elements for the timeline (no pseudo-element content).
  */
 
-import type { MenuDoc } from '../lib/types';
+import type { BeverageCategory, LegSection, MenuDoc, SnackGroup } from '../lib/types';
 
 function PlaneGlyph({ className }: { className?: string }) {
   return (
@@ -31,11 +39,14 @@ function PlaneGlyph({ className }: { className?: string }) {
   );
 }
 
+// ---------------------------------------------------------------- helpers --
+
 function joinNames(names: string[]): string {
   return names.join(', ');
 }
 
-function beverageLines(doc: MenuDoc, leg: MenuDoc['cabins'][number]['legs'][number]): Array<{ head: string; body: string }> {
+/** {head:"Champagne and Wine — White", body:"Cloudy Bay, Kistler"} flattened drink lines */
+function beverageLines(leg: LegSection): Array<{ head: string; body: string }> {
   const lines: Array<{ head: string; body: string }> = [];
   for (const cat of leg.beverages) {
     if (!cat.include) continue;
@@ -45,125 +56,176 @@ function beverageLines(doc: MenuDoc, leg: MenuDoc['cabins'][number]['legs'][numb
     for (const g of activeGroups) {
       const names = g.items.filter((i) => i.include).map((i) => i.name);
       if (names.length === 0) continue;
-      const head = multi && g.name !== cat.name ? `${cat.name} — ${g.name}` : cat.name;
+      // one group under the category → just the group name ("Champagne", "White");
+      // several groups → keep the category for context ("Champagne and Wine — Red")
+      const head = multi ? `${cat.name} — ${g.name}` : g.name !== cat.name ? g.name : cat.name;
       lines.push({ head, body: joinNames(names) });
     }
   }
   return lines;
 }
 
+function snackLines(leg: LegSection): Array<{ head: string; body: string }> {
+  return leg.snacks
+    .filter((g: SnackGroup) => g.include && g.items.some((i) => i.include))
+    .map((g) => ({ head: g.name, body: g.items.filter((i) => i.include).map((i) => i.name).join(', ') }));
+}
+
+/** "Main Course" → "MAIN", "Appetiser" → "APP", "Hot Beverage" → "HOT BEV" … */
+function shortCourseLabel(category: string): string {
+  const map: Array<[RegExp, string]> = [
+    [/^main/i, 'MAIN'],
+    [/^app[e]?/i, 'APP'],
+    [/^canap/i, 'CANAPE'],
+    [/^dessert/i, 'DESSERT'],
+    [/^bread|^bakery/i, 'BREAD'],
+    [/^praline/i, 'PRALINES'],
+    [/^hot\s?bev/i, 'HOT BEV'],
+    [/^salad/i, 'SALAD'],
+    [/^soup/i, 'SOUP'],
+    [/^snack/i, 'SNACK'],
+    [/^amenit/i, 'AMENITY'],
+    [/^beverage/i, 'BEVERAGES']
+  ];
+  for (const [re, label] of map) {
+    if (re.test(category.trim())) return label;
+  }
+  const words = category.trim().toUpperCase().split(/\s+/);
+  let out = '';
+  for (const w of words) {
+    const next = out ? `${out} ${w}` : w;
+    if (next.length > 14) break;
+    out = next;
+  }
+  return (out || words[0] || '').replace(/[&—-]\s*$/, '').trim();
+}
+
+/** "2026-09-05" → "050926" (falls back to parsing the pretty label). */
+function dateCode(doc: MenuDoc): string {
+  const iso = doc.dateISO;
+  if (iso && /^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+    return iso.slice(8, 10) + iso.slice(5, 7) + iso.slice(2, 4);
+  }
+  const m = /(\d{1,2})\s+(\w{3})\s+(\d{4})/.exec(doc.dateLabel);
+  if (m) {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const mi = months.findIndex((x) => x.toLowerCase() === m[2].toLowerCase());
+    if (mi >= 0) return String(m[1]).padStart(2, '0') + String(mi + 1).padStart(2, '0') + m[3].slice(2);
+  }
+  return '';
+}
+
+function flightCode(doc: MenuDoc): string {
+  return doc.flightLabel.replace(/\s+/g, '');
+}
+
 // ===========================================================================
-// ELEGANT LAYOUT
+// ELEGANT LAYOUT — SQ seatback card style
 // ===========================================================================
 
+function ElegantBeverageRows({ leg }: { leg: LegSection }) {
+  const bev = beverageLines(leg);
+  const snacks = snackLines(leg);
+  const rows: Array<{ label: string; lines: Array<{ head: string; body: string }> }> = [];
+  if (bev.length > 0) rows.push({ label: 'Beverages', lines: bev });
+  if (snacks.length > 0) rows.push({ label: 'Snacks', lines: snacks });
+  if (leg.amenities.length > 0) rows.push({ label: 'Amenities', lines: [{ head: '', body: joinNames(leg.amenities) }] });
+  if (rows.length === 0) return null;
+  return (
+    <div className="eg-timeline">
+      <div className="eg-line" />
+      {rows.map((row) => (
+        <div className="eg-row" key={row.label}>
+          <div className="eg-label">{row.label}</div>
+          <div className="eg-marker"><i /></div>
+          <div className="eg-dishes">
+            {row.lines.map((line, i) => (
+              <div className="eg-item eg-kv" key={i}>
+                {line.head ? (
+                  <>
+                    <b>{line.head}</b>
+                    <em>{line.body}</em>
+                  </>
+                ) : (
+                  <em className="eg-kvplain">{line.body}</em>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function ElegantPaper({ doc }: { doc: MenuDoc }) {
+  const multiCabin = doc.cabins.length > 1;
   return (
     <>
-      <header className="el-head">
-        <PlaneGlyph className="el-plane" />
-        <div className="el-brand">Singapore Airlines</div>
-        <h1 className="el-flight">{doc.flightLabel}</h1>
-        {doc.sheetTitle ? (
-          <div className="el-route">{doc.sheetTitle}</div>
-        ) : doc.cabins.length === 1 && doc.cabins[0].legs.some((l) => l.include) ? (
-          <div className="el-route">{doc.cabins[0].legs.filter((l) => l.include).map((l) => l.routeLabel).filter(Boolean)[0]}</div>
-        ) : null}
-        <div className="el-date">{doc.dateLabel}</div>
-        {doc.headerNote ? <div className="el-headnote">{doc.headerNote}</div> : null}
-        <div className="el-rule">
-          <span />
-          <i>◆</i>
-          <span />
-        </div>
+      <header className="eg-mast">
+        <span>{doc.flightLabel}</span>
+        <i>◆</i>
+        <span>{doc.dateLabel}</span>
+        <i>◆</i>
+        <span>{doc.cabins.map((c) => c.code).join(' · ')}</span>
       </header>
+      {doc.headerNote ? <div className="eg-headnote">{doc.headerNote}</div> : null}
 
       {doc.cabins.map((cab) => {
         const legs = cab.legs.filter((l) => l.include);
         return (
-          <section className="el-cabin" key={cab.id}>
-            <h2 className="el-cabin-title"><span>{cab.title}</span></h2>
+          <section className="eg-cabin" key={cab.id}>
+            {multiCabin && <h2 className="eg-cabin-title"><span>{cab.title}</span></h2>}
             {legs.map((leg) => (
-              <div className="el-leg" key={leg.id}>
-                {(leg.routeLabel || leg.timeLabel) && (
-                  <div className="el-legmeta">
-                    {leg.routeLabel}
-                    {leg.timeLabel ? <em> · {leg.timeLabel}</em> : null}
-                  </div>
-                )}
+              <div className="eg-leg" key={leg.id}>
                 {leg.banners.map((b, i) => (
-                  <div className="el-banner" key={i}>{b}</div>
+                  <div className="eg-banner" key={i}>{b}</div>
                 ))}
 
                 {leg.meals.filter((m) => m.include).map((meal) => (
-                  <div className="el-meal" key={meal.id}>
-                    <div className="el-mealname"><i>◆</i><span>{meal.name}</span><i>◆</i></div>
-                    {meal.writeUp ? <div className="el-writeup">{meal.writeUp}</div> : null}
+                  <div className="eg-service" key={meal.id}>
+                    <div className="eg-header">
+                      <div className="eg-route">{leg.routeLabel.replace(' → ', ' to ')}</div>
+                      <div className="eg-vr" />
+                      <h3 className="eg-title">{meal.name}</h3>
+                    </div>
+                    <div className="eg-rule" />
+
                     {meal.selections.filter((s) => s.include).map((sel) => (
-                      <div className="el-sel" key={sel.id}>
-                        {meal.selections.filter((s) => s.include).length > 1 || sel.name ? (
-                          <div className="el-selname">{sel.name}</div>
-                        ) : null}
-                        {sel.footnote ? <div className="el-selfoot">{sel.footnote}</div> : null}
-                        {sel.courses.filter((c) => c.include).map((course) => (
-                          <div className="el-course" key={course.id}>
-                            <div className="el-coursecat">
-                              {course.category}
-                              {course.choose > 1 ? <span className="el-choose"> · choose one of {course.choose}</span> : null}
-                            </div>
-                            {course.items.filter((i) => i.include).map((item) => (
-                              <div className="el-item" key={item.id}>
-                                <div className="el-itemname">{item.name}</div>
-                                {doc.showDescriptions && item.desc ? <div className="el-itemdesc">{item.desc}</div> : null}
+                      <div className="eg-sel" key={sel.id}>
+                        {sel.name ? <h4 className="eg-selname">{sel.name}</h4> : null}
+                        {sel.footnote && doc.showDescriptions ? <p className="eg-selfoot">{sel.footnote}</p> : null}
+                        <div className="eg-timeline">
+                          <div className="eg-line" />
+                          {sel.courses
+                            .filter((c) => c.include && c.items.some((i) => i.include))
+                            .map((course) => (
+                              <div className="eg-row" key={course.id}>
+                                <div className="eg-label">
+                                  {course.category}
+                                  {course.choose > 1 ? <small>choose 1 of {course.choose}</small> : null}
+                                </div>
+                                <div className="eg-marker"><i /></div>
+                                <div className="eg-dishes">
+                                  {course.items.filter((i) => i.include).map((item) => (
+                                    <div className="eg-item" key={item.id}>
+                                      <b>{item.name}</b>
+                                      {doc.showDescriptions && item.desc ? <em>{item.desc}</em> : null}
+                                    </div>
+                                  ))}
+                                </div>
                               </div>
                             ))}
-                          </div>
-                        ))}
+                        </div>
                       </div>
                     ))}
                   </div>
                 ))}
 
-                {(() => {
-                  const bev = beverageLines(doc, leg);
-                  if (bev.length === 0) return null;
-                  return (
-                    <div className="el-extra">
-                      <h3 className="el-extra-title">Beverages</h3>
-                      {bev.map((line, i) => (
-                        <p className="el-bev" key={i}>
-                          <strong>{line.head}</strong> — {line.body}
-                        </p>
-                      ))}
-                    </div>
-                  );
-                })()}
-
-                {leg.snacks.length > 0 && (
-                  <div className="el-extra">
-                    <h3 className="el-extra-title">Snacks</h3>
-                    {leg.snackNote ? <p className="el-note">{leg.snackNote}</p> : null}
-                    {leg.snacks.filter((g) => g.include).map((g) => {
-                      const names = g.items.filter((i) => i.include).map((i) => i.name);
-                      if (names.length === 0) return null;
-                      return (
-                        <p className="el-bev" key={g.id}>
-                          <strong>{g.name}</strong> — {joinNames(names)}
-                        </p>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {leg.amenities.length > 0 && (
-                  <div className="el-extra">
-                    <h3 className="el-extra-title">Amenities</h3>
-                    {leg.amenityNote ? <p className="el-note">{leg.amenityNote}</p> : null}
-                    <p className="el-bev">{joinNames(leg.amenities)}</p>
-                  </div>
-                )}
+                <ElegantBeverageRows leg={leg} />
 
                 {leg.notes.filter(Boolean).map((n, i) => (
-                  <p className="el-note" key={i}>{n}</p>
+                  <p className="eg-footnote" key={i}>{n}</p>
                 ))}
               </div>
             ))}
@@ -171,128 +233,101 @@ function ElegantPaper({ doc }: { doc: MenuDoc }) {
         );
       })}
 
-      <footer className="el-foot">
-        <span />
-        <div>{doc.attribution}</div>
-        <span />
-      </footer>
+      <footer className="eg-foot">{doc.attribution}</footer>
     </>
   );
 }
 
 // ===========================================================================
-// COMPACT LAYOUT
+// COMPACT LAYOUT — crew one-look sheet
 // ===========================================================================
 
-function CompactPaper({ doc }: { doc: MenuDoc }) {
+function CompactCourse({ label, choose, names }: { label: string; choose: number; names: string[] }) {
+  if (names.length === 0) return null;
+  const head = `${label}${choose > 1 ? ` (CHOOSE 1 OF ${choose})` : ''}:`;
   return (
     <>
-      <header className="cp-head">
-        <div className="cp-row">
-          <span className="cp-flight">{doc.flightLabel}</span>
-          <span className="cp-date">{doc.dateLabel}</span>
+      <div className="cx-line">
+        <b>{head}</b> {names[0]}
+      </div>
+      {names.slice(1).map((n, i) => (
+        <div className="cx-line cx-cont" key={i}>
+          {n}
         </div>
-        {doc.sheetTitle ? <div className="cp-sheetline">{doc.sheetTitle}</div> : null}
-      </header>
-      {doc.headerNote ? <div className="cp-headnote">{doc.headerNote}</div> : null}
+      ))}
+    </>
+  );
+}
 
+function CompactPaper({ doc }: { doc: MenuDoc }) {
+  const dc = dateCode(doc);
+  const fc = flightCode(doc);
+  return (
+    <div className="cx">
       {doc.cabins.map((cab) => {
         const legs = cab.legs.filter((l) => l.include);
         if (legs.length === 0) return null;
-        return (
-          <section className="cp-cabin" key={cab.id}>
-            <div className="cp-cabin-title">{cab.title}</div>
-            {legs.map((leg) => (
-              <div className="cp-leg" key={leg.id}>
-                {(leg.routeLabel || leg.timeLabel) && (
-                  <div className="cp-legmeta">
-                    {leg.routeLabel}
-                    {leg.timeLabel ? <span> · {leg.timeLabel}</span> : null}
+        return legs.map((leg) => {
+          const dest = leg.destCode ? ` (→ ${leg.destCode})` : leg.routeCodes ? ` (→ ${leg.routeCodes.split('→').pop()?.trim()})` : '';
+          const meals = leg.meals.filter((m) => m.include);
+          const bev = beverageLines(leg);
+          const snacks = snackLines(leg);
+          return (
+            <section className="cx-leg" key={leg.id}>
+              {meals.map((meal) => (
+                <div className="cx-service" key={meal.id}>
+                  <div className="cx-head">
+                    {fc}
+                    {dest} {cab.code} ({meal.name.toUpperCase()}) {dc}
                   </div>
-                )}
-                {leg.banners.map((b, i) => (
-                  <div className="cp-banner" key={i}>{b}</div>
-                ))}
-
-                {leg.meals.filter((m) => m.include).map((meal) => (
-                  <div className="cp-meal" key={meal.id}>
-                    <div className="cp-mealname">{meal.name}</div>
-                    {meal.writeUp && doc.showDescriptions ? <div className="cp-writeup">{meal.writeUp}</div> : null}
-                    {meal.selections.filter((s) => s.include).map((sel) => (
-                      <div className="cp-sel" key={sel.id}>
-                        {sel.name ? <div className="cp-selname">{sel.name}</div> : null}
-                        {sel.footnote && doc.showDescriptions ? <div className="cp-selfoot">{sel.footnote}</div> : null}
-                        {sel.courses.filter((c) => c.include).map((course) => {
-                          const items = course.items.filter((i) => i.include);
-                          if (items.length === 0) return null;
-                          return (
-                            <div className="cp-course" key={course.id}>
-                              <span className="cp-cat">{course.category}{course.choose > 1 ? ` (choose 1 of ${course.choose})` : ''}: </span>
-                              {items.map((item, idx) => (
-                                <span className="cp-item" key={item.id}>
-                                  {item.name}
-                                  {doc.showDescriptions && item.desc ? <span className="cp-desc"> ({item.desc})</span> : null}
-                                  {idx < items.length - 1 ? <span className="cp-sep"> · </span> : null}
-                                </span>
-                              ))}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ))}
-                  </div>
-                ))}
-
-                {(() => {
-                  const bev = beverageLines(doc, leg);
-                  if (bev.length === 0) return null;
-                  return (
-                    <div className="cp-block">
-                      <div className="cp-blockname">Beverages</div>
-                      {bev.map((line, i) => (
-                        <div className="cp-line" key={i}>
-                          <span className="cp-cat">{line.head}: </span>
-                          {line.body}
-                        </div>
-                      ))}
+                  {meal.selections.filter((s) => s.include).map((sel) => (
+                    <div className="cx-block" key={sel.id}>
+                      {meal.selections.length > 1 && sel.name ? <div className="cx-sel">{sel.name.toUpperCase()}</div> : null}
+                      {sel.courses
+                        .filter((c) => c.include && c.items.some((i) => i.include))
+                        .map((course) => (
+                          <CompactCourse
+                            key={course.id}
+                            label={shortCourseLabel(course.category)}
+                            choose={course.choose}
+                            names={course.items.filter((i) => i.include).map((i) => i.name)}
+                          />
+                        ))}
                     </div>
-                  );
-                })()}
+                  ))}
+                </div>
+              ))}
 
-                {leg.snacks.length > 0 && (
-                  <div className="cp-block">
-                    <div className="cp-blockname">Snacks</div>
-                    {leg.snacks.filter((g) => g.include).map((g) => {
-                      const names = g.items.filter((i) => i.include).map((i) => i.name);
-                      if (names.length === 0) return null;
-                      return (
-                        <div className="cp-line" key={g.id}>
-                          <span className="cp-cat">{g.name}: </span>
-                          {joinNames(names)}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+              {bev.length > 0 && (
+                <div className="cx-block">
+                  <div className="cx-head">{fc}{dest} {cab.code} (BEVERAGES) {dc}</div>
+                  {bev.map((line, i) => (
+                    <CompactCourse key={i} label={shortCourseLabel(line.head.split(' — ').pop() ?? line.head)} choose={0} names={[line.body]} />
+                  ))}
+                </div>
+              )}
 
-                {leg.amenities.length > 0 && (
-                  <div className="cp-block">
-                    <div className="cp-blockname">Amenities</div>
-                    <div className="cp-line">{joinNames(leg.amenities)}</div>
-                  </div>
-                )}
+              {snacks.length > 0 && (
+                <div className="cx-block">
+                  {snacks.map((line, i) => (
+                    <CompactCourse key={i} label={shortCourseLabel(line.head)} choose={0} names={[line.body]} />
+                  ))}
+                </div>
+              )}
 
-                {leg.notes.filter(Boolean).map((n, i) => (
-                  <div className="cp-note" key={i}>{n}</div>
-                ))}
-              </div>
-            ))}
-          </section>
-        );
+              {leg.amenities.length > 0 && (
+                <CompactCourse label="AMENITY" choose={0} names={[joinNames(leg.amenities).toUpperCase()]} />
+              )}
+
+              {leg.banners.map((b, i) => (
+                <div className="cx-banner" key={i}>NOTE: {b.toUpperCase()}</div>
+              ))}
+            </section>
+          );
+        });
       })}
-
-      <footer className="cp-foot">{doc.attribution}</footer>
-    </>
+      <footer className="cx-foot">{doc.attribution}</footer>
+    </div>
   );
 }
 
@@ -320,3 +355,4 @@ export default function Paper({ doc, layout, size, fontScale, paperRef }: PaperP
 }
 
 export { PlaneGlyph };
+export type { BeverageCategory };

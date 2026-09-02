@@ -47,6 +47,13 @@ function enUk(node: unknown): Json | null {
 
 // ---------- times / route ---------------------------------------------------
 
+function routeCodesOf(fd: Json | null): string {
+  if (!fd) return '';
+  const dep = str(fd.departureAirportCode);
+  const arr = str(fd.arrivalAirportCode);
+  return dep && arr ? `${dep} → ${arr}` : '';
+}
+
 function routeAndTime(fd: Json | null): { routeLabel: string; timeLabel: string } {
   if (!fd) return { routeLabel: '', timeLabel: '' };
   const depCity = str(fd.departureCityName) || str(fd.departureAirportCode);
@@ -233,10 +240,12 @@ function mapLeg(legRaw: Json): LegSection {
   const apology = str(mealBlock?.apologyFootnote);
   if (apology) notes.push(apology);
 
-  return {
+  const out: LegSection = {
     id: uid('leg'),
     include: true,
     routeLabel,
+    routeCodes: routeCodesOf(fd),
+    destCode: fd ? str(fd.arrivalAirportCode) : '',
     timeLabel,
     meals,
     beverages,
@@ -247,6 +256,7 @@ function mapLeg(legRaw: Json): LegSection {
     banners,
     notes
   };
+  return out;
 }
 
 // ---------- full doc -----------------------------------------------------------
@@ -299,6 +309,7 @@ export function buildDoc(
   return {
     flightLabel: `SQ ${query.flightNumber}`,
     dateLabel: prettyDate(query.flightDate),
+    dateISO: query.flightDate,
     sheetTitle,
     headerNote: '',
     cabins: filled,

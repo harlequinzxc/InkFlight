@@ -91,6 +91,10 @@ export interface LegSection {
   id: string;
   include: boolean;
   routeLabel: string; // "Singapore → Tokyo"
+  /** IATA pair, e.g. "SIN → NRT" (optional — legacy persisted docs may lack it) */
+  routeCodes?: string;
+  /** Arrival IATA code, e.g. "NRT" */
+  destCode?: string;
   timeLabel: string; // "14:20 → 17:50 +1d · 6h 45m"
   meals: MealService[];
   beverages: BeverageCategory[];
@@ -114,6 +118,8 @@ export interface MenuDoc {
   dateLabel: string; // "Sat, 6 Sep 2026"
   /** Route label of this sheet when part of a multi-sector print run */
   sheetTitle?: string;
+  /** ISO date (YYYY-MM-DD) — used by the compact header (DDMMYY code) */
+  dateISO?: string;
   headerNote: string; // optional line under the title
   cabins: CabinSection[];
   showDescriptions: boolean;
