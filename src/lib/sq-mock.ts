@@ -16,8 +16,12 @@
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { SqError, sendJson } from './sq';
+import { CABIN_META, CABIN_ORDER, type CabinCode, type CabinOption } from './types';
 
 type Json = Record<string, unknown>;
+
+const CABINS_ALL: CabinOption[] = CABIN_META;
+const CABINS_TWO: CabinOption[] = CABIN_META.filter((c) => c.code === 'SCL' || c.code === 'YCL');
 
 async function bodyOf(req: IncomingMessage): Promise<Json> {
   const pre = (req as { body?: unknown }).body;
@@ -55,6 +59,10 @@ const flightOf = (raw: unknown): number => {
 const item = (name: string, description = ''): Json => ({ name, description });
 
 function fullMenu(fn: number, date: string): Json {
+  // SIN is UTC+8: 07:15 local = 23:15 UTC on the previous calendar day
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 1);
+  const prevDay = d.toISOString().slice(0, 10);
   return {
     flightNumber: String(fn).padStart(4, '0'),
     flightDate: date,
@@ -68,7 +76,7 @@ function fullMenu(fn: number, date: string): Json {
           departureAirportCode: 'SIN', departureCityName: 'Singapore',
           arrivalAirportCode: 'HND', arrivalCityName: 'Tokyo',
           departureLocalDate: `${date} 07:15:00`, arrivalLocalDate: `${date} 15:05:00`,
-          departureUtcDate: `${date} 23:15:00`, arrivalUtcDate: `${date} 06:05:00`,
+          departureUtcDate: `${prevDay} 23:15:00`, arrivalUtcDate: `${date} 06:05:00`,
           flightStatus: 'SCHEDULED'
         },
         menu: { language: { EN_UK: {
@@ -197,15 +205,21 @@ function snackBagMenu(fn: number, date: string): Json {
 export async function apiGetCabin(req: IncomingMessage, res: ServerResponse): Promise<void> {
   try {
     const body = await bodyOf(req);
-    const fn = flightOf(body.flightNumber);
-    const date = String(body.flightDate ?? '');
+    const fn = flightOf(body.flightNumber ?? body.flight);
+    const date = String(body.flightDate ?? body.date ?? '');
     if (!Number.isInteger(fn) || fn < 1 || fn > 9999) throw new SqError('BAD_INPUT', 'That does not look like an SQ flight number.', 400);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new SqError('BAD_INPUT', 'Date must be YYYY-MM-DD.', 400);
-    if (fn === 999 || date < isoShift(0) || date > isoShift(8)) {
+    if (date < isoShift(0) || date > isoShift(8)) {
+      throw new SqError('BAD_DATE', 'That date is outside the menu window — menus publish from today up to 8 days before departure.', 400);
+    }
+    if (fn === 999) {
       throw new SqError('NOT_FOUND', 'No flight found for that number and date. Menus are typically published from today up to 8 days before departure.', 404);
     }
-    const cabins = fn === 200 ? ['YCL', 'SCL'] : ['FCL', 'JCL', 'SCL', 'YCL'];
-    sendJson(res, 200, { ok: true, data: { cabinClasses: cabins } });
+    if (fn === 300) {
+      throw new SqError('NO_CABINS', 'We found the flight, but no menu cabins are open for it yet. Try again closer to departure.', 404);
+    }
+    const cabins = fn === 200 ? CABINS_TWO : CABINS_ALL;
+    sendJson(res, 200, { ok: true, data: { flight: String(fn), flightDate: date, cabins } });
   } catch (err) {
     fail(res, err instanceof SqError ? err : new SqError('UPSTREAM_HTTP', 'Unexpected mock error.', 500));
   }
@@ -214,12 +228,15 @@ export async function apiGetCabin(req: IncomingMessage, res: ServerResponse): Pr
 export async function apiGetMenu(req: IncomingMessage, res: ServerResponse): Promise<void> {
   try {
     const body = await bodyOf(req);
-    const fn = flightOf(body.flightNumber);
-    const date = String(body.flightDate ?? '');
-    const cabin = String(body.cabinClass ?? '');
+    const fn = flightOf(body.flightNumber ?? body.flight);
+    const date = String(body.flightDate ?? body.date ?? '');
+    const cabin = String(body.cabinClass ?? body.cabin ?? '');
     if (!Number.isInteger(fn) || fn < 1 || fn > 9999) throw new SqError('BAD_INPUT', 'That does not look like an SQ flight number.', 400);
-    if (!['FCL', 'JCL', 'SCL', 'YCL'].includes(cabin)) throw new SqError('BAD_INPUT', 'Unknown cabin class.', 400);
-    if (fn === 999 || date < isoShift(0) || date > isoShift(8)) {
+    if (!CABIN_ORDER.includes(cabin as CabinCode)) throw new SqError('BAD_INPUT', 'Unknown cabin class.', 400);
+    if (date < isoShift(0) || date > isoShift(8)) {
+      throw new SqError('BAD_DATE', 'That date is outside the menu window — menus publish from today up to 8 days before departure.', 400);
+    }
+    if (fn === 999) {
       throw new SqError('NOT_FOUND', 'No flight found for that number and date. Menus are typically published from today up to 8 days before departure.', 404);
     }
     const payload = cabin === 'YCL' ? snackBagMenu(fn, date) : fullMenu(fn, date);

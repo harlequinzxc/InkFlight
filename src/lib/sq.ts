@@ -18,6 +18,7 @@
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { CABIN_META, CABIN_ORDER, type CabinCode, type CabinOption } from './types';
 
 // ---------------------------------------------------------------------------
 // Endpoints & headers
@@ -35,7 +36,9 @@ const TIMEOUT_MS = 8_000; // must sit WELL under the serverless function cap (10
 
 export type SqErrorCode =
   | 'BAD_INPUT'
+  | 'BAD_DATE'
   | 'NOT_FOUND'
+  | 'NO_CABINS'
   | 'UPSTREAM_TIMEOUT'
   | 'UPSTREAM_NETWORK'
   | 'UPSTREAM_HTTP'
@@ -122,7 +125,7 @@ function cachePut(key: string, payload: unknown, ttlMs: number): void {
   cache.set(key, { at: Date.now(), ttlMs, payload });
 }
 
-const TTL_OK = 6 * 60 * 60 * 1000; // menus rarely change pre-flight (spec: ~6 h)
+const TTL_OK = 30 * 60 * 1000; // within the 15–60 min politeness band (menus rarely change pre-flight)
 const TTL_MISS = 5 * 60 * 1000; // NOT_FOUND — menus get published, so minutes only
 
 // ---------------------------------------------------------------------------
@@ -179,8 +182,8 @@ async function callUpstream(path: string, body: UpstreamBody): Promise<{ http: n
       signal: ctrl.signal
     });
   } catch (err) {
-    if (ctrl.signal.aborted) throw new SqError('UPSTREAM_TIMEOUT', 'The menu service took too long to answer.', 504);
-    throw new SqError('UPSTREAM_NETWORK', 'Could not reach the menu service.', 502);
+    if (ctrl.signal.aborted) throw new SqError('UPSTREAM_TIMEOUT', 'The menu service is temporarily unreachable. Please retry in a moment.', 504);
+    throw new SqError('UPSTREAM_NETWORK', 'The menu service is temporarily unreachable. Please retry in a moment.', 502);
   } finally {
     clearTimeout(timer);
   }
@@ -217,13 +220,52 @@ function assertBodyStatus(json: unknown): void {
 // Public operations
 // ---------------------------------------------------------------------------
 
-export async function getCabins(q: SqQuery): Promise<{ cabinClasses: string[]; stale?: boolean }> {
+/** Server-side date window — allows ±1 day of slack for timezone skew
+ *  (the client gates strictly on its LOCAL today…today+8; the server runs UTC). */
+function assertDateWindow(flightDate: string): void {
+  const now = new Date();
+  const iso = (d: Date): string =>
+    `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+  const today = new Date(`${iso(now)}T00:00:00Z`);
+  const min = new Date(today.getTime() - 86_400_000);
+  const max = new Date(today.getTime() + 9 * 86_400_000);
+  const d = new Date(`${flightDate}T00:00:00Z`);
+  if (Number.isNaN(d.getTime()) || d < min || d > max) {
+    throw new SqError(
+      'BAD_DATE',
+      'That date is outside the menu window — menus publish from today up to 8 days before departure.',
+      400
+    );
+  }
+}
+
+export interface CabinCheckResult {
+  flight: string;
+  flightDate: string;
+  cabins: CabinOption[];
+}
+
+function normalizeCabins(raw: unknown): CabinOption[] {
+  if (!Array.isArray(raw)) return [];
+  const known = new Set<string>(CABIN_ORDER);
+  const out: CabinOption[] = CABIN_ORDER.map((code) => (raw.includes(code) ? CABIN_META.find((m) => m.code === code) : undefined)).filter(
+    (c): c is CabinOption => c !== undefined
+  );
+  // preserve any unknown upstream codes at the end rather than dropping them
+  for (const r of raw) {
+    if (typeof r === 'string' && !known.has(r)) out.push({ code: r as CabinCode, label: r, short: r });
+  }
+  return out;
+}
+
+export async function getCabins(q: SqQuery): Promise<CabinCheckResult & { stale?: boolean }> {
   const flightNumber = cleanFlightNumber(q.flightNumber);
   const flightDate = cleanDate(q.flightDate);
+  assertDateWindow(flightDate);
   const key = `cabin:SQ${flightNumber}:${flightDate}`;
 
   const hit = cacheGet(key);
-  if (hit && Date.now() - hit.at < hit.ttlMs) return { cabinClasses: (hit.payload as { cabinClasses: string[] }).cabinClasses };
+  if (hit && Date.now() - hit.at < hit.ttlMs) return hit.payload as CabinCheckResult;
 
   try {
     const { json } = await callUpstream('getcabin', {
@@ -233,21 +275,17 @@ export async function getCabins(q: SqQuery): Promise<{ cabinClasses: string[]; s
       sessionId: sessionId()
     });
     assertBodyStatus(json);
-    const cabins = (json as { cabinClasses?: unknown })?.cabinClasses;
-    if (!Array.isArray(cabins) || cabins.length === 0) {
-      throw new SqError(
-        'NOT_FOUND',
-        'No flight found for that number and date. Menus are typically published from today up to 8 days before departure.',
-        404
-      );
+    const cabins = normalizeCabins((json as { cabinClasses?: unknown })?.cabinClasses);
+    if (cabins.length === 0) {
+      throw new SqError('NO_CABINS', 'We found the flight, but no menu cabins are open for it yet. Try again closer to departure.', 404);
     }
-    const payload = { cabinClasses: cabins.filter((c): c is string => typeof c === 'string') };
+    const payload: CabinCheckResult = { flight: flightNumber, flightDate, cabins };
     cachePut(key, payload, TTL_OK);
     return payload;
   } catch (err) {
     // Stale-fallback only for transient upstream failures — NEVER for a real miss.
-    if (hit && err instanceof SqError && err.code !== 'NOT_FOUND' && err.code !== 'BAD_INPUT') {
-      return { cabinClasses: (hit.payload as { cabinClasses: string[] }).cabinClasses, stale: true };
+    if (hit && err instanceof SqError && err.code !== 'NOT_FOUND' && err.code !== 'BAD_INPUT' && err.code !== 'BAD_DATE' && err.code !== 'NO_CABINS') {
+      return { ...(hit.payload as CabinCheckResult), stale: true };
     }
     throw err;
   }
@@ -326,7 +364,8 @@ export async function apiGetCabin(req: IncomingMessage, res: ServerResponse): Pr
       flightNumber: String(body.flightNumber ?? ''),
       flightDate: String(body.flightDate ?? '')
     });
-    sendJson(res, 200, { ok: true, data, ...(data.stale ? { stale: true } : {}) });
+    const { stale, ...payload } = data;
+    sendJson(res, 200, { ok: true, data: payload, ...(stale ? { stale: true } : {}) });
   } catch (err) {
     if (err instanceof SqError) sendJson(res, err.httpStatus, { ok: false, error: { code: err.code, message: err.message } });
     else sendJson(res, 500, { ok: false, error: { code: 'UPSTREAM_HTTP', message: 'Unexpected server error.' } });

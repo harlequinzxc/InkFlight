@@ -2,14 +2,25 @@
 
 export type CabinCode = 'FCL' | 'JCL' | 'SCL' | 'YCL';
 
-export const CABIN_LABELS: Record<CabinCode, string> = {
-  FCL: 'Suites / First',
-  JCL: 'Business',
-  SCL: 'Premium Economy',
-  YCL: 'Economy'
-};
+/** Normalized cabin option returned by /api/cabins (spec shape). */
+export interface CabinOption {
+  code: CabinCode;
+  label: string;
+  short: string;
+}
 
-export const CABIN_ORDER: CabinCode[] = ['FCL', 'JCL', 'SCL', 'YCL'];
+export const CABIN_META: CabinOption[] = [
+  { code: 'FCL', label: 'Suites & First Class', short: 'First' },
+  { code: 'JCL', label: 'Business Class', short: 'Business' },
+  { code: 'SCL', label: 'Premium Economy', short: 'Premium Economy' },
+  { code: 'YCL', label: 'Economy Class', short: 'Economy' }
+];
+
+export const CABIN_LABELS: Record<CabinCode, string> = Object.fromEntries(
+  CABIN_META.map((c) => [c.code, c.label])
+) as Record<CabinCode, string>;
+
+export const CABIN_ORDER: CabinCode[] = CABIN_META.map((c) => c.code);
 
 // ---------------------------------------------------------------------------
 // Editable menu document (what the paper renders)
@@ -116,7 +127,9 @@ export type PaperSize = 'A4' | 'A6';
 
 export type ApiErrorCode =
   | 'BAD_INPUT'
+  | 'BAD_DATE'
   | 'NOT_FOUND'
+  | 'NO_CABINS'
   | 'UPSTREAM_TIMEOUT'
   | 'UPSTREAM_NETWORK'
   | 'UPSTREAM_HTTP'

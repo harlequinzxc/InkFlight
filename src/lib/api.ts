@@ -1,6 +1,6 @@
 /** Client → our own /api (same-origin). Typed errors, no leaks upstream. */
 
-import type { ApiError } from './types';
+import type { ApiError, CabinOption } from './types';
 
 interface ApiEnvelope<T> {
   ok: boolean;
@@ -27,25 +27,14 @@ function unreadableHint(status: number): string {
   return `The service answered HTTP ${status} with an unreadable body. Try again.`;
 }
 
-async function post<T>(path: string, body: Record<string, unknown>): Promise<{ data: T; stale: boolean }> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+async function request<T>(path: string, init: RequestInit): Promise<{ data: T; stale: boolean }> {
   let res: Response;
   try {
-    res = await fetch(path, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: ctrl.signal
-    });
+    res = await fetch(path, init);
   } catch (err) {
-    clearTimeout(timer);
-    if (err instanceof DOMException && err.name === 'AbortError') {
-      throw new ApiFailure({ code: 'UPSTREAM_TIMEOUT', message: 'The menu service took too long to answer. Try again.' });
-    }
+    if (err instanceof DOMException && err.name === 'AbortError') throw err; // caller decides (race guard)
     throw new ApiFailure({ code: 'UPSTREAM_NETWORK', message: 'You appear to be offline. Check your connection and try again.' });
   }
-  clearTimeout(timer);
 
   const text = await res.text();
   let env: ApiEnvelope<T> | null = null;
@@ -63,14 +52,58 @@ async function post<T>(path: string, body: Record<string, unknown>): Promise<{ d
   return { data: env.data, stale: env.stale === true };
 }
 
-export interface CabinResult {
-  cabinClasses: string[];
+function withTimeout(signal: AbortSignal | undefined): { signal: AbortSignal; done: () => void } {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  const onOuterAbort = () => ctrl.abort();
+  signal?.addEventListener('abort', onOuterAbort);
+  return {
+    signal: ctrl.signal,
+    done: () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onOuterAbort);
+    }
+  };
 }
 
-export function fetchCabins(flightNumber: string, flightDate: string): Promise<{ data: CabinResult; stale: boolean }> {
-  return post<CabinResult>('/api/getcabin', { flightNumber, flightDate });
+/** GET /api/cabins?flight=11&date=YYYY-MM-DD — normalized cabin options. */
+export interface CabinCheckData {
+  flight: string;
+  flightDate: string;
+  cabins: CabinOption[];
 }
 
-export function fetchMenu(flightNumber: string, flightDate: string, cabinClass: string): Promise<{ data: unknown; stale: boolean }> {
-  return post<unknown>('/api/menu', { flightNumber, flightDate, cabinClass });
+export async function fetchCabins(
+  flightNumber: string,
+  flightDate: string,
+  signal?: AbortSignal
+): Promise<{ data: CabinCheckData; stale: boolean }> {
+  const t = withTimeout(signal);
+  try {
+    return await request<CabinCheckData>(
+      `/api/cabins?flight=${encodeURIComponent(flightNumber)}&date=${encodeURIComponent(flightDate)}`,
+      { method: 'GET', signal: t.signal, headers: { Accept: 'application/json' } }
+    );
+  } finally {
+    t.done();
+  }
+}
+
+export async function fetchMenu(
+  flightNumber: string,
+  flightDate: string,
+  cabinClass: string,
+  signal?: AbortSignal
+): Promise<{ data: unknown; stale: boolean }> {
+  const t = withTimeout(signal);
+  try {
+    return await request<unknown>('/api/menu', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ flightNumber, flightDate, cabinClass }),
+      signal: t.signal
+    });
+  } finally {
+    t.done();
+  }
 }

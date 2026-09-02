@@ -4,9 +4,9 @@ import Landing from './views/Landing';
 import Search, { type CheckState } from './views/Search';
 import Editor from './views/Editor';
 import { ApiFailure, fetchCabins, fetchMenu } from './lib/api';
-import { normalizeFlight } from './lib/flight';
+import { addDaysISO, daysBetweenISO, normalizeFlight, prettyDate, todayISO } from './lib/flight';
 import { buildDoc } from './lib/normalize';
-import { CABIN_ORDER, type CabinCode, type LayoutKind, type MenuDoc, type PaperSize } from './lib/types';
+import { CABIN_ORDER, type CabinCode, type CabinOption, type LayoutKind, type MenuDoc, type PaperSize } from './lib/types';
 
 type View = 'landing' | 'search' | 'editor';
 
@@ -17,7 +17,6 @@ interface Prefs {
 }
 
 const PREFS_KEY = 'inkflight.prefs';
-const SEARCH_KEY = 'inkflight.search';
 const DOC_KEY = 'inkflight.doc';
 
 const DEFAULT_PREFS: Prefs = { layout: 'elegant', size: 'A4', fontScale: 1 };
@@ -46,13 +45,18 @@ export default function App() {
   const [interlude, setInterlude] = useState(false);
 
   // ---- search state (preserved across back-navigation) ----
-  const [flightInput, setFlightInput] = useState('');
-  const [dateISO, setDateISO] = useState<string | null>(null);
+  const initialQuery = useRef(new URLSearchParams(window.location.search));
+  const [flightInput, setFlightInput] = useState(() => initialQuery.current.get('flight') ?? '');
+  const [dateISO, setDateISO] = useState<string | null>(() => {
+    const d = initialQuery.current.get('date');
+    return d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null;
+  });
   const [checkState, setCheckState] = useState<CheckState>('idle');
-  const [availableCabins, setAvailableCabins] = useState<CabinCode[]>([]);
+  const [cabinOptions, setCabinOptions] = useState<CabinOption[]>([]);
   const [selectedCabins, setSelectedCabins] = useState<CabinCode[]>([]);
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
   const [staleNotice, setStaleNotice] = useState(false);
+  const [fetching, setFetching] = useState(false);
 
   // ---- editor state ----
   const [prefs, setPrefs] = useState<Prefs>(() => ({ ...DEFAULT_PREFS, ...loadJSON<Partial<Prefs>>(PREFS_KEY) }));
@@ -63,11 +67,12 @@ export default function App() {
   const toastTimer = useRef<number | undefined>(undefined);
   const menuCacheRef = useRef(new Map<string, unknown>());
   const fetchTokenRef = useRef(0);
+  const checkAbortRef = useRef<AbortController | null>(null);
 
   // ---------- history integration (hardware back works, state preserved) ----------
-  const navigate = useCallback((v: View, push = true): void => {
+  const navigate = useCallback((v: View, push = true, url?: string): void => {
     setView(v);
-    if (push) window.history.pushState({ view: v }, '');
+    if (push) window.history.pushState({ view: v }, '', url);
   }, []);
 
   useEffect(() => {
@@ -76,6 +81,7 @@ export default function App() {
       const v = (e.state as { view?: View } | null)?.view ?? 'landing';
       setView(v);
       setInterlude(false);
+      setFetching(false);
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
@@ -97,75 +103,72 @@ export default function App() {
     toastTimer.current = window.setTimeout(() => setToast(null), 3200);
   }, []);
 
-  // ---------- cabin existence check (Gate 2) ----------
-  const runCheck = useCallback(
-    async (flight: string, date: string, token: number): Promise<void> => {
-      setCheckState('checking');
-      setError(null);
-      setStaleNotice(false);
-      setAvailableCabins([]);
-      setSelectedCabins([]);
-      try {
-        const { data, stale } = await fetchCabins(flight, date);
-        if (token !== fetchTokenRef.current) return;
-        const cabins = CABIN_ORDER.filter((c) => data.cabinClasses.includes(c));
-        // keep any extra unknown codes rather than dropping them
-        const extras = data.cabinClasses.filter((c) => !CABIN_ORDER.includes(c as CabinCode)) as CabinCode[];
-        setAvailableCabins([...cabins, ...extras]);
-        setCheckState('ok');
-        setStaleNotice(stale);
-      } catch (err) {
-        if (token !== fetchTokenRef.current) return;
-        setCheckState('error');
-        setError(err instanceof ApiFailure ? { code: err.code, message: err.message } : { code: 'UPSTREAM_HTTP', message: 'Something went wrong. Try again.' });
-      }
-    },
-    []
-  );
+  // ---------- cabin check (Gate 2) — explicit submit only ----------
+  const discardCheck = useCallback((): void => {
+    checkAbortRef.current?.abort();
+    setCheckState('idle');
+    setError(null);
+    setCabinOptions([]);
+    setSelectedCabins([]);
+    setStaleNotice(false);
+  }, []);
+
+  const runCheck = useCallback(async (flight: string, date: string, token: number, signal: AbortSignal): Promise<void> => {
+    setCheckState('checking');
+    setError(null);
+    setStaleNotice(false);
+    setCabinOptions([]);
+    setSelectedCabins([]);
+    try {
+      const { data, stale } = await fetchCabins(flight, date, signal);
+      if (token !== fetchTokenRef.current) return;
+      setCabinOptions(data.cabins);
+      setCheckState('ok');
+      setStaleNotice(stale);
+    } catch (err) {
+      if (token !== fetchTokenRef.current) return;
+      if (err instanceof DOMException && err.name === 'AbortError') return; // superseded — ignore stale response
+      setCheckState('error');
+      setError(err instanceof ApiFailure ? { code: err.code, message: err.message } : { code: 'UPSTREAM_HTTP', message: 'Something went wrong. Try again.' });
+    }
+  }, []);
+
+  /** Gate 1 + date window OFFLINE, then one network call. Never per keystroke. */
+  const submitCheck = useCallback((): void => {
+    const gate = normalizeFlight(flightInput);
+    if (!gate.ok || !dateISO || checkState === 'checking' || fetching) return;
+    const shift = daysBetweenISO(todayISO(), dateISO);
+    if (shift < 0 || shift > 8) {
+      // blocked BEFORE any network call — menus publish today → +8 days
+      setCheckState('error');
+      setError({
+        code: 'BAD_DATE',
+        message: `${prettyDate(dateISO)} is outside the menu window. Menus publish from today up to 8 days before departure — pick a date between ${prettyDate(todayISO())} and ${prettyDate(addDaysISO(todayISO(), 8))}.`
+      });
+      return;
+    }
+    checkAbortRef.current?.abort();
+    const ctrl = new AbortController();
+    checkAbortRef.current = ctrl;
+    const token = ++fetchTokenRef.current;
+    void runCheck(gate.value, dateISO, token, ctrl.signal);
+  }, [flightInput, dateISO, checkState, fetching, runCheck]);
 
   const pickDate = useCallback(
     (iso: string): void => {
       setDateISO(iso);
-      const gate = normalizeFlight(flightInput);
-      if (!gate.ok) return;
-      const token = ++fetchTokenRef.current;
-      void runCheck(gate.value, iso, token);
+      // results are per flight+date pair — any change discards them instantly
+      discardCheck();
     },
-    [flightInput, runCheck]
+    [discardCheck]
   );
-
-  const retryCheck = useCallback((): void => {
-    if (!dateISO) return;
-    const gate = normalizeFlight(flightInput);
-    if (!gate.ok) return;
-    const token = ++fetchTokenRef.current;
-    void runCheck(gate.value, dateISO, token);
-  }, [dateISO, flightInput, runCheck]);
-
-  const checkTimerRef = useRef<number | undefined>(undefined);
 
   const onFlightInput = useCallback(
     (v: string): void => {
       setFlightInput(v);
-      // changing the flight invalidates any previous check
-      setCheckState('idle');
-      setError(null);
-      setAvailableCabins([]);
-      setSelectedCabins([]);
-      setStaleNotice(false);
-      // if a date is already chosen, re-verify automatically — debounced,
-      // never per keystroke (polite-client rule)
-      window.clearTimeout(checkTimerRef.current);
-      const gate = normalizeFlight(v);
-      if (gate.ok && dateISO) {
-        const date = dateISO;
-        checkTimerRef.current = window.setTimeout(() => {
-          const token = ++fetchTokenRef.current;
-          void runCheck(gate.value, date, token);
-        }, 650);
-      }
+      discardCheck();
     },
-    [dateISO, runCheck]
+    [discardCheck]
   );
 
   const toggleCabin = useCallback((c: CabinCode): void => {
@@ -175,7 +178,8 @@ export default function App() {
   // ---------- fetch menus (Gate 3) + interlude ----------
   const startFetch = useCallback(async (): Promise<void> => {
     const gate = normalizeFlight(flightInput);
-    if (!gate.ok || !dateISO || selectedCabins.length === 0) return;
+    if (!gate.ok || !dateISO || selectedCabins.length === 0 || fetching) return;
+    setFetching(true);
     setInterlude(true);
     setError(null);
 
@@ -199,8 +203,9 @@ export default function App() {
       if (fulfilled.length < settled.length) {
         showToast('Some cabins were unavailable — the others were compiled.');
       }
-      const anyStale = fulfilled.some((s) => s.value.stale);
-      if (anyStale) showToast('Served from an offline copy — may be outdated.');
+      if (fulfilled.some((s) => s.value.stale)) {
+        showToast('Served from an offline copy — may be outdated.');
+      }
 
       const rawByCabin = fulfilled.map((s) => ({ cabin: s.value.cabin, payload: s.value.payload }));
       return buildDoc({ flightNumber: gate.value, flightDate: dateISO }, rawByCabin);
@@ -217,6 +222,7 @@ export default function App() {
     // the interlude copy is meant to be readable — hold it ≥3.2 s regardless
     await delay(3200);
     setInterlude(false);
+    setFetching(false);
 
     if (failure !== null || built === null) {
       setCheckState('error');
@@ -228,9 +234,9 @@ export default function App() {
       return;
     }
     setDoc(built);
-    setView('editor');
-    window.history.pushState({ view: 'editor' }, '');
-  }, [flightInput, dateISO, selectedCabins, showToast]);
+    const params = new URLSearchParams({ flight: gate.value, date: dateISO, cabin: selectedCabins.join(',') });
+    navigate('editor', true, `?${params.toString()}`);
+  }, [flightInput, dateISO, selectedCabins, fetching, navigate, showToast]);
 
   // ---------- doc editing ----------
   const onDocChange = useCallback((next: MenuDoc): void => {
@@ -238,7 +244,6 @@ export default function App() {
   }, []);
 
   const goBackFromEditor = useCallback((): void => {
-    // browser-back semantics: returns to search with all inputs intact
     if (window.history.state?.view === 'editor') window.history.back();
     else navigate('search', false);
   }, [navigate]);
@@ -270,12 +275,13 @@ export default function App() {
           dateISO={dateISO}
           onPickDate={pickDate}
           checkState={checkState}
-          availableCabins={availableCabins}
+          cabinOptions={cabinOptions}
           selectedCabins={selectedCabins}
           onToggleCabin={toggleCabin}
           error={error}
           staleNotice={staleNotice}
-          onRetryCheck={retryCheck}
+          onSubmitCheck={submitCheck}
+          fetching={fetching}
           onFetch={() => void startFetch()}
           onBack={() => (window.history.state?.view === 'search' ? window.history.back() : navigate('landing', false))}
         />

@@ -21,8 +21,8 @@ export default defineConfig({
       configureServer(server) {
         server.middlewares.use(((req, res, next) => {
           const url = (req.url || '').split('?')[0];
-          if (url === '/api/getcabin' || url === '/api/menu') {
-            void handleApiRequest(url === '/api/getcabin' ? 'getcabin' : 'menu', req, res);
+          if (url === '/api/getcabin' || url === '/api/cabins' || url === '/api/menu') {
+            void handleApiRequest(url === '/api/menu' ? 'menu' : 'cabins', req, res);
           } else {
             next();
           }

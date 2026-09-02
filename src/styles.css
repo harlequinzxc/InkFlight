@@ -429,6 +429,96 @@ body {
   margin-top: 30px;
   animation: fadeUp 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
+.submitrow {
+  margin-top: 26px;
+  animation: fadeUp 0.4s ease both;
+}
+.check-btn {
+  width: 100%;
+}
+.check-btn:disabled {
+  opacity: 0.75;
+}
+.check-btn .ring-sm {
+  margin-right: 4px;
+  border-top-color: #14264a;
+  border-color: rgba(20, 38, 74, 0.25);
+}
+.ring-dark {
+  border-top-color: #14264a;
+  border-color: rgba(20, 38, 74, 0.25);
+}
+.pill.warn {
+  border-color: #e0b34d;
+  color: #ecd08a;
+}
+.pills-note.warn {
+  color: #e0b34d;
+}
+.cabin-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+  gap: 10px;
+}
+.cabin-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+  padding: 14px 14px 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--cream);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.2s ease, background 0.2s ease;
+}
+.cabin-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(201, 162, 75, 0.5);
+}
+.cabin-card:disabled {
+  opacity: 0.55;
+  cursor: default;
+  transform: none;
+}
+.card-code {
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  color: var(--gold);
+}
+.card-short {
+  font-size: 15.5px;
+  font-weight: 700;
+  margin-top: 2px;
+}
+.card-sub {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 5px;
+}
+.cabin-card.on .card-sub {
+  color: var(--gold-bright);
+}
+.card-tick {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--gold-bright);
+}
+.cabin-card.on {
+  border-color: #e9cd82;
+  background: linear-gradient(160deg, rgba(233, 205, 130, 0.16), rgba(201, 162, 75, 0.07));
+}
+.card-in {
+  animation: cardIn 0.45s cubic-bezier(0.2, 0.8, 0.3, 1.2) both;
+}
 .chips {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
@@ -1685,6 +1775,16 @@ body {
   from {
     opacity: 0;
     transform: translateY(-18px) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes cardIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
   }
   to {
     opacity: 1;
