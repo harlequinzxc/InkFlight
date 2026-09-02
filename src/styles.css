@@ -1172,6 +1172,7 @@ body {
 }
 .cx-label {
   flex: none;
+  font-size: calc(9px * var(--sz) * var(--doc-scale, 1));
   font-weight: 700;
   letter-spacing: 0.01em;
   padding-right: calc(1.4mm * var(--sz) * var(--doc-scale, 1));

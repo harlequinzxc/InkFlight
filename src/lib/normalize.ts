@@ -164,7 +164,8 @@ function mapBeverages(bevRoot: unknown): BeverageCategory[] {
     }
     if (groups.length > 0) {
       // default OFF for everything except the Champagne & Wine list
-      out.push({ id: uid('bc'), include: /champagne/i.test(catName), name: catName || 'Beverages', groups });
+      // (explicit cold/soft/juice exclusion guards against combined names)
+      out.push({ id: uid('bc'), include: /champagne/i.test(catName) && !/cold|soft|juice/i.test(catName), name: catName || 'Beverages', groups });
     }
   }
   return out;
@@ -183,7 +184,8 @@ function mapSnacks(drySnack: unknown): { groups: SnackGroup[]; note: string } {
       .map((i) => obj(i))
       .filter((i): i is Json => i !== null && str(i.name) !== '')
       .map(mapItem);
-    if (items.length > 0) groups.push({ id: uid('sg'), include: true, name: str(sub.name) || 'Snacks', items });
+    // snacks hidden by default — toggle back per group in the editor
+    if (items.length > 0) groups.push({ id: uid('sg'), include: false, name: str(sub.name) || 'Snacks', items });
   }
   return { groups, note };
 }
@@ -332,7 +334,10 @@ export function migrateDoc(doc: MenuDoc): MenuDoc {
       if (leg.bannersOn === undefined) leg.bannersOn = false;
       if (leg.notesOn === undefined) leg.notesOn = false;
       for (const cat of leg.beverages) {
-        if (cat.include === undefined) cat.include = /champagne/i.test(cat.name);
+        if (cat.include === undefined) cat.include = /champagne/i.test(cat.name) && !/cold|soft|juice/i.test(cat.name);
+      }
+      for (const group of leg.snacks) {
+        if (group.include === undefined) group.include = false;
       }
       for (const meal of leg.meals) {
         for (const sel of meal.selections) {
