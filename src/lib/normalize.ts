@@ -173,11 +173,11 @@ export function wineRegion(desc: string): string {
 
 // ---------- protein highlight (compact one-look) ----------------------------
 
-/** Meat protein vocabulary — matched on word boundaries with the dish name
- *  at render time, so it generalises to any future menu data. Fish, seafood,
- *  egg and vegetarian proteins deliberately not included. */
+/** Meat & seafood protein vocabulary — matched on word boundaries with the
+ *  dish name at render time, so it generalises to any future menu data.
+ *  Egg, cheese and vegetarian proteins deliberately not included. */
 const PROTEIN_RE =
-  /\b(beef|steak|wagyu|veal|chicken|duck|turkey|pork|bacon|ham|lamb|mutton|venison|quail|sausage|chorizo|salami|prosciutto|pepperoni|meatball)\b/i;
+  /\b(beef|steak|wagyu|veal|chicken|duck|turkey|pork|bacon|ham|lamb|mutton|venison|quail|sausage|chorizo|salami|prosciutto|pepperoni|meatball|fish|salmon|tuna|cod|haddock|seabass|sea bass|barramundi|snapper|mackerel|sardine|trout|halibut|swordfish|prawns|prawn|shrimp|crab|lobster|scallop|mussels|mussel|clam|oyster|squid|calamari|octopus|anchovy)\b/i;
 
 /** First protein word in a dish name → [start, end) or null. */
 export function proteinRange(text: string): [number, number] | null {
