@@ -14,7 +14,7 @@
  */
 
 import type { BeverageCategory, LegSection, MenuDoc, SnackGroup } from '../lib/types';
-import { proteinRange, wineRegion } from '../lib/normalize';
+import { dishLine, proteinRange, wineRegion } from '../lib/normalize';
 
 function PlaneGlyph({ className }: { className?: string }) {
   return (
@@ -334,7 +334,7 @@ function CompactPaper({ doc }: { doc: MenuDoc }) {
                           <CompactCourse
                             key={course.id}
                             label={shortCourseLabel(course.category)}
-                            names={course.items.filter((i) => i.include).map((i) => i.name)}
+                            names={course.items.filter((i) => i.include).map((i) => dishLine(i.name, i.desc, course.category))}
                           />
                         ))}
                     </div>

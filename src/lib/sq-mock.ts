@@ -136,6 +136,16 @@ function legContent(index: number): Json {
                 ]
               }
             ]
+          },
+          {
+            mealServiceNumber: '2', mealServiceCode: 'SUP_900', mealServiceName: 'Supper', mealServiceWriteUp: '',
+            selectionDetails: [
+              { name: 'International Menu', code: 'ALC-International Menu', footnoteId: '', footnoteName: '', footnoteIconImagePath: '',
+                mealCourses: [
+                  { category: 'Main Course', code: 'MC', maxSequence: 1, items: [item('Braised Lamb Shank', 'Slow-braised with rosemary jus, creamy polenta and grilled vegetables')] }
+                ]
+              }
+            ]
           }
         ]
       } } },
@@ -144,7 +154,8 @@ function legContent(index: number): Json {
           { name: 'Champagne', code: 'CH', footer: '', specialities: [{ items: [item('Charles Heidsieck Brut Réserve'), item('Louis Roederer Collection 244', 'Champagne, France, Champagne, located in the north of France, with its cool climate and famed chalky soil, makes the most famous sparkling wines in the world.')] }] },
           { name: 'White', code: 'WH', footer: '', specialities: [{ items: [item('Cloudy Bay Sauvignon Blanc 2024', 'Marlborough, New Zealand'), item('Kistler Chardonnay 2023', 'Sonoma Coast, Pale in colour, with lovely citrus and stone fruit')] }] },
           { name: 'Red', code: 'RD', footer: '', specialities: [{ items: [item('Penfolds Bin 389 Cabernet Shiraz 2022', 'South Australia')] }] },
-          { name: 'Fortified Wine', code: 'FW', footer: '', specialities: [{ items: [item('Kopke 10 Years Old', 'Port, Portugal')] }] }
+          { name: 'Fortified Wine', code: 'FW', footer: '', specialities: [{ items: [item('Kopke 10 Years Old', 'Port, Portugal')] }] },
+          { name: 'Sparkling Water', code: 'WT', footer: '', specialities: [{ items: [item('San Pellegrino Sparkling Water')] }] }
         ] },
         { name: 'Spirits and Liqueurs', categorySequence: 2, subcategories: [
           { name: 'Whisky', code: 'WK', footer: '', specialities: [{ items: [item('The Macallan Double Cask 12 Years'), item('Hibiki Japanese Harmony')] }] }

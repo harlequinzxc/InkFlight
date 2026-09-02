@@ -171,6 +171,12 @@ export function wineRegion(desc: string): string {
   return out.join(', ');
 }
 
+// ---------- cold-drink detection + defaults ---------------------------------
+
+/** Cold-drink-ish names are never on by default — works at category AND
+ *  group level, for any future menu naming. */
+const COLDISH_RE = /cold|soft|juice|water|soda|mineral|beer|cocktail/i;
+
 // ---------- protein highlight (compact one-look) ----------------------------
 
 /** Meat & seafood protein vocabulary — matched on word boundaries with the
@@ -183,6 +189,53 @@ const PROTEIN_RE =
 export function proteinRange(text: string): [number, number] | null {
   const m = PROTEIN_RE.exec(text);
   return m ? [m.index, m.index + m[0].length] : null;
+}
+
+// ---------- starch side (compact one-look) ----------------------------------
+
+/** Starchy sides/sauces-vocabulary — the compact sheet drops descriptions, so
+ *  the side is pulled from the description and appended to the dish name.
+ *  Word-boundary matched; generalises to any future menu data. */
+const STARCH_RE =
+  /\b(potato|potatoes|r[oö]sti|rice|pilaf|pilau|biryani|congee|noodles?|pasta|fusilli|penne|spaghetti|linguine|fettuccine|tagliatelle|macaroni|pappardelle|vermicelli|gnocchi|polenta|couscous|quinoa|bread|rolls?|bun|brioche|focaccia|ciabatta|sourdough|baguette|croissant|toast|naan|roti|paratha|tortilla|wrap|pita|fries|chips|wedges|udon|soba|ramen)\b/i;
+
+/** Savoury courses that get the starch appended (not desserts/bakery/snacks). */
+const FOOD_COURSE_RE = /\b(main|appetis|appetiz|light|starter|entree|entr[eé]e)\b/i;
+
+/** Pull the starch phrase out of a description:
+ *  "Braised chicken in red wine sauce, with mashed potatoes, baby spinach"
+ *  → "mashed potatoes"; "…served with Asian vegetables and steamed jasmine
+ *  rice" → "steamed jasmine rice"; "…served with fragrant egg fried rice and
+ *  a selection of seasonal mixed vegetables" → "egg fried rice".
+ *  Returns null when the description names no starch. */
+export function starchPhrase(desc: string): string | null {
+  for (const raw of desc.split(',')) {
+    const seg = raw.trim().replace(/^(?:served\s+)?(?:and\s+)?(?:with\s+)?/i, '');
+    // when the segment joins two things ("Asian vegetables and steamed
+    // jasmine rice"), prefer the half that actually holds the starch
+    const halves = seg.split(/\s+and\s+/i);
+    const pick = halves.find((h) => STARCH_RE.test(h));
+    if (!pick) continue;
+    const m = STARCH_RE.exec(pick);
+    if (!m) continue;
+    // keep the starch word plus up to two modifiers ahead of it
+    const words = pick.slice(0, m.index + m[0].length).trim().split(/\s+/);
+    const phrase = words.slice(-3).join(' ');
+    if (phrase.length > 2) return phrase;
+  }
+  return null;
+}
+
+/** Compact dish line: append the starchy side from the description when the
+ *  name doesn't already carry one — "Coq Au Vin" → "Coq Au Vin with mashed
+ *  potatoes", "Sweet and Sour Fish" → "Sweet and Sour Fish with egg fried
+ *  rice". Dishes whose name names its vehicle (focaccia, wrap, pasta, …)
+ *  are left alone; elegant keeps full descriptions instead. */
+export function dishLine(name: string, desc: string, category: string): string {
+  if (!FOOD_COURSE_RE.test(category)) return name;
+  if (STARCH_RE.test(name)) return name;
+  const side = desc ? starchPhrase(desc) : null;
+  return side ? `${name} with ${side}` : name;
 }
 
 function mapBeverages(bevRoot: unknown): BeverageCategory[] {
@@ -206,15 +259,15 @@ function mapBeverages(bevRoot: unknown): BeverageCategory[] {
         }
       }
       if (items.length > 0) {
-        // Fortified Wine hidden by default (toggle it back in the editor)
+        // Fortified Wine + cold-drink groups hidden by default (editor eye toggles them back)
         const groupName = subName || catName;
-        groups.push({ id: uid('bg'), include: !/fortified/i.test(groupName), name: groupName, items });
+        groups.push({ id: uid('bg'), include: !/fortified/i.test(groupName) && !COLDISH_RE.test(groupName), name: groupName, items });
       }
     }
     if (groups.length > 0) {
       // default OFF for everything except the Champagne & Wine list
-      // (explicit cold/soft/juice exclusion guards against combined names)
-      out.push({ id: uid('bc'), include: /champagne/i.test(catName) && !/cold|soft|juice/i.test(catName), name: catName || 'Beverages', groups });
+      // (cold-drink exclusion guards against combined names)
+      out.push({ id: uid('bc'), include: /champagne|wine/i.test(catName) && !COLDISH_RE.test(catName), name: catName || 'Beverages', groups });
     }
   }
   return out;
@@ -367,7 +420,7 @@ export function buildDoc(
     flightLabel: `SQ ${query.flightNumber}`,
     dateLabel: prettyDate(query.flightDate),
     dateISO: query.flightDate,
-    defaultsV: 3,
+    defaultsV: 4,
     sheetTitle,
     headerNote: '',
     cabins: filled,
@@ -378,16 +431,19 @@ export function buildDoc(
 
 /** Bring legacy persisted docs up to the current model (missing print toggles). */
 export function migrateDoc(doc: MenuDoc): MenuDoc {
+  const v = doc.defaultsV ?? 0;
   for (const cab of doc.cabins) {
     for (const leg of cab.legs) {
       if (leg.amenitiesOn === undefined) leg.amenitiesOn = false;
       if (leg.bannersOn === undefined) leg.bannersOn = false;
       if (leg.notesOn === undefined) leg.notesOn = false;
       for (const cat of leg.beverages) {
-        if (cat.include === undefined) cat.include = /champagne/i.test(cat.name) && !/cold|soft|juice/i.test(cat.name);
+        if (cat.include === undefined) cat.include = /champagne|wine/i.test(cat.name) && !COLDISH_RE.test(cat.name);
+        else if (v < 4 && COLDISH_RE.test(cat.name)) cat.include = false; // new in v4
         for (const g of cat.groups) {
-          if (g.include === undefined) g.include = !/fortified/i.test(g.name);
-          else if (doc.defaultsV !== 3 && /fortified/i.test(g.name)) g.include = false; // new in v3
+          if (g.include === undefined) g.include = !/fortified/i.test(g.name) && !COLDISH_RE.test(g.name);
+          else if (v < 3 && /fortified/i.test(g.name)) g.include = false; // new in v3
+          else if (v < 4 && COLDISH_RE.test(g.name)) g.include = false; // new in v4
         }
       }
       for (const group of leg.snacks) {
@@ -399,14 +455,14 @@ export function migrateDoc(doc: MenuDoc): MenuDoc {
             if (course.include === undefined) {
               course.include = !/^hot\s?bev/i.test(course.category) && !/^snack/i.test(course.category) && !/^chocolate/i.test(course.category);
             } else {
-              if (doc.defaultsV === undefined && /^snack/i.test(course.category)) course.include = false; // v2
-              if (doc.defaultsV !== 3 && /^chocolate/i.test(course.category)) course.include = false; // v3
+              if (v < 2 && /^snack/i.test(course.category)) course.include = false; // v2
+              if (v < 3 && /^chocolate/i.test(course.category)) course.include = false; // v3
             }
           }
         }
       }
     }
   }
-  doc.defaultsV = 3;
+  doc.defaultsV = 4;
   return doc;
 }

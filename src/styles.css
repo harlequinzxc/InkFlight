@@ -1166,6 +1166,13 @@ body {
   letter-spacing: 0.02em;
   color: #10131a;
   margin-bottom: calc(0.4mm * var(--sz));
+  /* separator rule sits in the gap above each section header */
+  border-top: 1px solid #d1d5db;
+  padding-top: calc(1.4mm * var(--sz));
+}
+.cx-leg > :first-child .cx-head {
+  border-top: 0;
+  padding-top: 0;
 }
 .cx-sel {
   font-size: calc(8px * var(--sz) * var(--doc-scale, 1));

@@ -15,13 +15,15 @@ import {
   type ISectionOptions
 } from 'docx';
 import type { LegSection, MenuDoc } from './types';
-import { proteinRange, wineRegion } from './normalize';
+import { dishLine, proteinRange, wineRegion } from './normalize';
 
 const NAVY = '13294B';
 const GOLD = '9A7B2D';
 const GOLD_SOFT = 'C9A24B';
 const INK = '1A1A1A';
 const GREY = '595959';
+/** separator rule between compact sections */
+const SECTION_GREY = 'D1D5DB';
 const PAPER_GREY = 'F2F2F2';
 
 const PAGE = {
@@ -238,17 +240,20 @@ function compactChildren(doc: MenuDoc): Paragraph[] {
   for (const cab of doc.cabins) {
     for (const leg of cab.legs.filter((l) => l.include)) {
       const dest = leg.destCode ? ` (→ ${leg.destCode})` : leg.routeCodes ? ` (→ ${leg.routeCodes.split('→').pop()?.trim()})` : '';
+      let firstSection = true;
       for (const meal of leg.meals.filter((m) => m.include)) {
         p({
           spacing: { before: 60, after: 20 },
+          border: firstSection ? undefined : { top: { style: BorderStyle.SINGLE, size: 4, color: SECTION_GREY, space: 4 } },
           children: [new TextRun({ text: `${fc}${dest} ${cab.code} (${meal.name.toUpperCase()}) ${dc}`, font: SANS, size: 19, bold: true, color: INK })]
         });
+        firstSection = false;
         for (const sel of meal.selections.filter((sl) => sl.include)) {
           if (meal.selections.length > 1 && sel.name) {
             p({ spacing: { after: 15 }, children: [new TextRun({ text: sel.name.toUpperCase(), font: SANS, size: 15, color: GREY })] });
           }
           for (const course of sel.courses.filter((c) => c.include && c.items.some((i) => i.include))) {
-            const items = course.items.filter((i) => i.include).map((i) => i.name.toUpperCase());
+            const items = course.items.filter((i) => i.include).map((i) => dishLine(i.name, i.desc, course.category).toUpperCase());
             const label = `${shortCourseLabel(course.category)}:`;
             // continuation lines align under the first dish ≈ label width
             const hang = Math.min(2600, Math.max(400, Math.round(label.length * 105)));
@@ -265,7 +270,7 @@ function compactChildren(doc: MenuDoc): Paragraph[] {
 
       const bev = beverageLines(leg);
       if (bev.length > 0) {
-        p({ spacing: { before: 60, after: 20 }, children: [new TextRun({ text: `${fc}${dest} ${cab.code} (BEVERAGES) ${dc}`, font: SANS, size: 19, bold: true, color: INK })] });
+        p({ spacing: { before: 60, after: 20 }, border: { top: { style: BorderStyle.SINGLE, size: 4, color: SECTION_GREY, space: 4 } }, children: [new TextRun({ text: `${fc}${dest} ${cab.code} (BEVERAGES) ${dc}`, font: SANS, size: 19, bold: true, color: INK })] });
         for (const line of bev) {
           const label = `${shortCourseLabel(line.head.split(' — ').pop() ?? line.head)}:`;
           const names = line.wine ? line.items.map((w) => w.toUpperCase()) : [line.body.toUpperCase()];
