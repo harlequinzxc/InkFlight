@@ -14,6 +14,7 @@ import {
   type ISectionOptions
 } from 'docx';
 import type { LegSection, MenuDoc } from './types';
+import { wineRegion } from './normalize';
 
 const NAVY = '13294B';
 const GOLD = '9A7B2D';
@@ -54,7 +55,7 @@ function beverageLines(leg: LegSection): Array<{ head: string; body: string; win
       const items = g.items.filter((i) => i.include);
       if (items.length === 0) continue;
       const head = multi ? `${cat.name} — ${g.name}` : g.name !== cat.name ? g.name : cat.name;
-      const wineNames = items.map((i) => vintageFirst([i.name, i.desc].filter(Boolean).join(', ')));
+      const wineNames = items.map((i) => vintageFirst([i.name, wineRegion(i.desc)].filter(Boolean).join(', ')));
       const plainNames = items.map((i) => i.name);
       lines.push({ head, body: (wine ? wineNames : plainNames).join(', '), wine, items: wine ? wineNames : plainNames });
     }

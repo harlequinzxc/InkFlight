@@ -87,8 +87,8 @@ function mapCourse(raw: Json): Course {
   const category = str(raw.category) || 'Menu';
   return {
     id: uid('cs'),
-    // Hot Beverage hidden by default (toggle it back in the editor)
-    include: !/^hot\s?bev/i.test(category),
+    // Hot Beverage + Snack courses hidden by default (toggle them back in the editor)
+    include: !/^hot\s?bev/i.test(category) && !/^snack/i.test(category),
     category,
     choose: maxSeq > 1 ? maxSeq : 0,
     items
@@ -137,6 +137,19 @@ function mapMealService(raw: Json): MealService {
 }
 
 // ---------- beverages -------------------------------------------------------
+
+/** SQ packs wine tasting notes as "Region, blurb…" (e.g. "Marlborough,
+ *  New Zealand, Lawson's Dry Hills is a well-known producer…"). Keep only the
+ *  short geographic prefix — never the marketing prose. */
+export function wineRegion(desc: string): string {
+  const out: string[] = [];
+  for (const chunk of desc.split(',')) {
+    const c = chunk.trim();
+    if (!c || out.length >= 2 || c.length > 28 || /\d/.test(c)) break;
+    out.push(c);
+  }
+  return out.join(', ');
+}
 
 function mapBeverages(bevRoot: unknown): BeverageCategory[] {
   const block = enUk(bevRoot);
@@ -318,6 +331,7 @@ export function buildDoc(
     flightLabel: `SQ ${query.flightNumber}`,
     dateLabel: prettyDate(query.flightDate),
     dateISO: query.flightDate,
+    defaultsV: 2,
     sheetTitle,
     headerNote: '',
     cabins: filled,
@@ -342,11 +356,17 @@ export function migrateDoc(doc: MenuDoc): MenuDoc {
       for (const meal of leg.meals) {
         for (const sel of meal.selections) {
           for (const course of sel.courses) {
-            if (course.include === undefined) course.include = !/^hot\s?bev/i.test(course.category);
+            if (course.include === undefined) {
+              course.include = !/^hot\s?bev/i.test(course.category) && !/^snack/i.test(course.category);
+            } else if (doc.defaultsV !== 2 && /^snack/i.test(course.category)) {
+              // pre-v2 docs persisted course-level snacks as visible — apply the new default
+              course.include = false;
+            }
           }
         }
       }
     }
   }
+  doc.defaultsV = 2;
   return doc;
 }

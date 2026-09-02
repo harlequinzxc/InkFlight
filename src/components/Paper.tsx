@@ -14,6 +14,7 @@
  */
 
 import type { BeverageCategory, LegSection, MenuDoc, SnackGroup } from '../lib/types';
+import { wineRegion } from '../lib/normalize';
 
 function PlaneGlyph({ className }: { className?: string }) {
   return (
@@ -72,8 +73,8 @@ function beverageLines(leg: LegSection): Array<{ head: string; body: string; win
       const items = g.items.filter((i) => i.include);
       if (items.length === 0) continue;
       const head = multi ? `${cat.name} — ${g.name}` : g.name !== cat.name ? g.name : cat.name;
-      // wine: full name + region, vintage leading, one per line
-      const wineNames = items.map((i) => vintageFirst([i.name, i.desc].filter(Boolean).join(', ')));
+      // wine: name + region only (never the tasting-note prose), vintage leading, one per line
+      const wineNames = items.map((i) => vintageFirst([i.name, wineRegion(i.desc)].filter(Boolean).join(', ')));
       const plainNames = items.map((i) => i.name);
       lines.push({ head, body: joinNames(wine ? wineNames : plainNames), wine, items: wine ? wineNames : plainNames });
     }

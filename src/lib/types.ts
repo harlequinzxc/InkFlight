@@ -126,6 +126,8 @@ export interface MenuDoc {
   sheetTitle?: string;
   /** ISO date (YYYY-MM-DD) — used by the compact header (DDMMYY code) */
   dateISO?: string;
+  /** Version of the default-visibility rules this doc was built with (migrateDoc upgrades older docs) */
+  defaultsV?: number;
   headerNote: string; // optional line under the title
   cabins: CabinSection[];
   showDescriptions: boolean;

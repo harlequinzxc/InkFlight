@@ -141,7 +141,7 @@ function legContent(index: number): Json {
       } } },
       beverage: { language: { EN_UK: { categories: [
         { name: 'Champagne and Wine', categorySequence: 1, subcategories: [
-          { name: 'Champagne', code: 'CH', footer: '', specialities: [{ items: [item('Charles Heidsieck Brut Réserve')] }] },
+          { name: 'Champagne', code: 'CH', footer: '', specialities: [{ items: [item('Charles Heidsieck Brut Réserve'), item('Louis Roederer Collection 244', 'Champagne, France, Champagne, located in the north of France, with its cool climate and famed chalky soil, makes the most famous sparkling wines in the world.')] }] },
           { name: 'White', code: 'WH', footer: '', specialities: [{ items: [item('Cloudy Bay Sauvignon Blanc 2024', 'Marlborough, New Zealand'), item('Kistler Chardonnay 2023', 'Sonoma Coast')] }] },
           { name: 'Red', code: 'RD', footer: '', specialities: [{ items: [item('Penfolds Bin 389 Cabernet Shiraz 2022', 'South Australia')] }] }
         ] },
