@@ -9,6 +9,7 @@ import {
   Document,
   Packer,
   Paragraph,
+  ShadingType,
   TextRun,
   type IParagraphOptions,
   type ISectionOptions
@@ -214,13 +215,14 @@ function elegantChildren(doc: MenuDoc): Paragraph[] {
 // Compact — crew one-look sheet (header line + COURSE: NAMES)
 // ---------------------------------------------------------------------------
 
-/** Compact dish text: the protein word stands out (bold) for one-look scanning. */
+/** Compact dish text: the meat protein gets a highlighter band (grey shading,
+ *  light enough to keep the caps readable) for one-look scanning. */
 function dishRuns(text: string, size: number): TextRun[] {
   const r = proteinRange(text);
   if (!r) return [new TextRun({ text, font: SANS, size, color: INK })];
   const runs: TextRun[] = [];
   if (r[0] > 0) runs.push(new TextRun({ text: text.slice(0, r[0]), font: SANS, size, color: INK }));
-  runs.push(new TextRun({ text: text.slice(r[0], r[1]), font: SANS, size, bold: true, color: INK }));
+  runs.push(new TextRun({ text: text.slice(r[0], r[1]), font: SANS, size, color: INK, shading: { type: ShadingType.CLEAR, color: 'auto', fill: 'D6D6D6' } }));
   if (r[1] < text.length) runs.push(new TextRun({ text: text.slice(r[1]), font: SANS, size, color: INK }));
   return runs;
 }

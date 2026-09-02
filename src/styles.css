@@ -1144,7 +1144,10 @@ body {
   text-transform: uppercase;
 }
 .cx-prot {
-  font-weight: 700;
+  /* literal highlighter band — light enough to keep the caps readable */
+  background: #d6d6d6;
+  padding: 0 0.3mm;
+  border-radius: 1px;
 }
 .cx-leg {
   display: flex;

@@ -272,14 +272,14 @@ function ElegantPaper({ doc }: { doc: MenuDoc }) {
 // COMPACT LAYOUT — crew one-look sheet
 // ===========================================================================
 
-/** Dish name with its protein word emphasised (compact one-look). */
+/** Dish name with its meat protein given a highlighter band (compact one-look). */
 function DishText({ text }: { text: string }) {
   const r = proteinRange(text);
   if (!r) return <>{text}</>;
   return (
     <>
       {text.slice(0, r[0])}
-      <b className="cx-prot">{text.slice(r[0], r[1])}</b>
+      <span className="cx-prot">{text.slice(r[0], r[1])}</span>
       {text.slice(r[1])}
     </>
   );
