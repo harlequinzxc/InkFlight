@@ -122,7 +122,7 @@ function legContent(index: number): Json {
                     item('Pan-Seared Salmon', 'Miso butter, seasonal greens')
                   ] },
                   { category: 'Dessert', code: 'DS', maxSequence: 1, items: [item('Dark Chocolate Cake', 'With gold-dusted ganache')] },
-                  { category: 'Bread', code: 'BB', maxSequence: 1, items: [item('Assorted Breakfast Pastries'), item('Multigrain Toast', 'With butter and jam')] }
+                  { category: 'From The Bakery', code: 'BB', maxSequence: 1, items: [item('Assorted Breakfast Pastries'), item('Multigrain Toast', 'With butter and jam')] }
                 ]
               },
               {

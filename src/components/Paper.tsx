@@ -78,6 +78,7 @@ function shortCourseLabel(category: string): string {
     [/^app[e]?/i, 'APP'],
     [/^canap/i, 'CANAPE'],
     [/^dessert/i, 'DESSERT'],
+    [/^from\s+the\s+baker/i, 'FROM THE BAKERY'],
     [/^bread|^bakery/i, 'BREAD'],
     [/^praline/i, 'PRALINES'],
     [/^hot\s?bev/i, 'HOT BEV'],
@@ -94,7 +95,7 @@ function shortCourseLabel(category: string): string {
   let out = '';
   for (const w of words) {
     const next = out ? `${out} ${w}` : w;
-    if (next.length > 14) break;
+    if (next.length > 22) break;
     out = next;
   }
   return (out || words[0] || '').replace(/[&—-]\s*$/, '').trim();
@@ -246,18 +247,20 @@ function ElegantPaper({ doc }: { doc: MenuDoc }) {
 
 function CompactCourse({ label, names }: { label: string; names: string[] }) {
   if (names.length === 0) return null;
-  const head = `${label}:`;
+  // Flex row: continuation dishes live INSIDE the content box, so they align
+  // exactly with the first letter after the colon — for any label width.
   return (
-    <>
-      <div className="cx-line">
-        <b>{head}</b> {names[0]}
+    <div className="cx-course">
+      <b className="cx-label">{label}:</b>
+      <div className="cx-dishes">
+        {names[0]}
+        {names.slice(1).map((n, i) => (
+          <div className="cx-more" key={i}>
+            {n}
+          </div>
+        ))}
       </div>
-      {names.slice(1).map((n, i) => (
-        <div className="cx-line cx-cont" key={i}>
-          {n}
-        </div>
-      ))}
-    </>
+    </div>
   );
 }
 

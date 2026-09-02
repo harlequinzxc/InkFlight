@@ -65,6 +65,7 @@ function shortCourseLabel(category: string): string {
     [/^app[e]?/i, 'APP'],
     [/^canap/i, 'CANAPE'],
     [/^dessert/i, 'DESSERT'],
+    [/^from\s+the\s+baker/i, 'FROM THE BAKERY'],
     [/^bread|^bakery/i, 'BREAD'],
     [/^praline/i, 'PRALINES'],
     [/^hot\s?bev/i, 'HOT BEV'],
@@ -81,7 +82,7 @@ function shortCourseLabel(category: string): string {
   let out = '';
   for (const w of words) {
     const next = out ? `${out} ${w}` : w;
-    if (next.length > 14) break;
+    if (next.length > 22) break;
     out = next;
   }
   return (out || words[0] || '').replace(/[&—-]\s*$/, '').trim();
@@ -198,7 +199,6 @@ function compactChildren(doc: MenuDoc): Paragraph[] {
   };
   const dc = dateCode(doc);
   const fc = doc.flightLabel.replace(/\s+/g, '');
-  const cont = 1_100; // continuation indent (twips)
 
   for (const cab of doc.cabins) {
     for (const leg of cab.legs.filter((l) => l.include)) {
@@ -215,11 +215,13 @@ function compactChildren(doc: MenuDoc): Paragraph[] {
           for (const course of sel.courses.filter((c) => c.include && c.items.some((i) => i.include))) {
             const items = course.items.filter((i) => i.include).map((i) => i.name.toUpperCase());
             const label = `${shortCourseLabel(course.category)}:`;
+            // continuation lines align under the first dish ≈ label width
+            const hang = Math.min(2600, Math.max(400, Math.round(label.length * 105)));
             items.forEach((name, idx) => {
               if (idx === 0) {
-                p({ spacing: { after: 8 }, children: [new TextRun({ text: `${label} `, font: SANS, size: 19, bold: true, color: INK }), new TextRun({ text: name, font: SANS, size: 19, color: INK })] });
+                p({ indent: { left: hang, hanging: hang }, spacing: { after: 8 }, children: [new TextRun({ text: `${label} `, font: SANS, size: 19, bold: true, color: INK }), new TextRun({ text: name, font: SANS, size: 19, color: INK })] });
               } else {
-                p({ indent: { left: cont }, spacing: { after: 8 }, children: [new TextRun({ text: name, font: SANS, size: 19, color: INK })] });
+                p({ indent: { left: hang }, spacing: { after: 8 }, children: [new TextRun({ text: name, font: SANS, size: 19, color: INK })] });
               }
             });
           }
