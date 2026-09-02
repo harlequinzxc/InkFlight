@@ -87,8 +87,12 @@ function mapCourse(raw: Json): Course {
   const category = str(raw.category) || 'Menu';
   return {
     id: uid('cs'),
-    // Hot Beverage + Snack + Chocolate courses hidden by default (toggle them back in the editor)
-    include: !/^hot\s?bev/i.test(category) && !/^snack/i.test(category) && !/^chocolate/i.test(category),
+    // Hot Beverage + Snack + Chocolate + cold-drink courses hidden by default (toggle them back in the editor)
+    include:
+      !/^hot\s?bev/i.test(category) &&
+      !/^snack/i.test(category) &&
+      !/^chocolate/i.test(category) &&
+      !(/bev|drink/i.test(category) && COLDISH_RE.test(category)),
     category,
     choose: maxSeq > 1 ? maxSeq : 0,
     items
@@ -205,22 +209,35 @@ const FOOD_COURSE_RE = /\b(main|appetis|appetiz|light|starter|entree|entr[eé]e)
 /** Pull the starch phrase out of a description:
  *  "Braised chicken in red wine sauce, with mashed potatoes, baby spinach"
  *  → "mashed potatoes"; "…served with Asian vegetables and steamed jasmine
- *  rice" → "steamed jasmine rice"; "…served with fragrant egg fried rice and
- *  a selection of seasonal mixed vegetables" → "egg fried rice".
+ *  rice" → "steamed jasmine rice"; "Singapore-style wok-fried rice noodles
+ *  with seafood" → "Singapore-style wok-fried rice noodles" (consecutive
+ *  starch nouns are kept whole — "rice" alone would misname the dish).
  *  Returns null when the description names no starch. */
 export function starchPhrase(desc: string): string | null {
   for (const raw of desc.split(',')) {
-    const seg = raw.trim().replace(/^(?:served\s+)?(?:and\s+)?(?:with\s+)?/i, '');
+    const seg = raw.trim();
     // when the segment joins two things ("Asian vegetables and steamed
     // jasmine rice"), prefer the half that actually holds the starch
     const halves = seg.split(/\s+and\s+/i);
-    const pick = halves.find((h) => STARCH_RE.test(h));
-    if (!pick) continue;
-    const m = STARCH_RE.exec(pick);
+    const picked = halves.find((h) => STARCH_RE.test(h));
+    if (!picked) continue;
+    const half = picked.replace(/^(?:served\s+)?(?:with\s+)?/i, '').trim();
+    const m = STARCH_RE.exec(half);
     if (!m) continue;
-    // keep the starch word plus up to two modifiers ahead of it
-    const words = pick.slice(0, m.index + m[0].length).trim().split(/\s+/);
-    const phrase = words.slice(-3).join(' ');
+    // keep every modifier ahead of the starch core, cutting at the last
+    // linking word ("served with fragrant egg fried rice" → "fragrant egg
+    // fried rice", "slow cooked in clay pot with steamed rice" → "steamed rice")
+    const before = half.slice(0, m.index);
+    let cut = 0;
+    for (const lm of before.matchAll(/\b(?:served|with|and|in|on|over|alongside|topped)\b/gi)) {
+      cut = (lm.index ?? 0) + lm[0].length;
+    }
+    // extend through consecutive starch nouns ("rice noodles", not "rice")
+    let end = m.index + m[0].length;
+    for (let tk = /^\s+([A-Za-z'-]+)/.exec(half.slice(end)); tk && STARCH_RE.test(tk[1]); tk = /^\s+([A-Za-z'-]+)/.exec(half.slice(end))) {
+      end += tk[0].length;
+    }
+    const phrase = half.slice(cut, end).replace(/\s+/g, ' ').trim();
     if (phrase.length > 2) return phrase;
   }
   return null;
@@ -228,14 +245,17 @@ export function starchPhrase(desc: string): string | null {
 
 /** Compact dish line: append the starchy side from the description when the
  *  name doesn't already carry one — "Coq Au Vin" → "Coq Au Vin with mashed
- *  potatoes", "Sweet and Sour Fish" → "Sweet and Sour Fish with egg fried
- *  rice". Dishes whose name names its vehicle (focaccia, wrap, pasta, …)
+ *  potatoes", "Braised Beef Ragout with Smoked Paprika" → "…with Smoked
+ *  Paprika and steamed new potatoes" (name already has "with" → join with
+ *  "and"). Dishes whose name names its vehicle (focaccia, wrap, pasta, …)
  *  are left alone; elegant keeps full descriptions instead. */
 export function dishLine(name: string, desc: string, category: string): string {
   if (!FOOD_COURSE_RE.test(category)) return name;
   if (STARCH_RE.test(name)) return name;
   const side = desc ? starchPhrase(desc) : null;
-  return side ? `${name} with ${side}` : name;
+  if (!side) return name;
+  const joiner = /\bwith\b/i.test(name) ? 'and' : 'with';
+  return `${name} ${joiner} ${side}`;
 }
 
 function mapBeverages(bevRoot: unknown): BeverageCategory[] {
@@ -420,7 +440,7 @@ export function buildDoc(
     flightLabel: `SQ ${query.flightNumber}`,
     dateLabel: prettyDate(query.flightDate),
     dateISO: query.flightDate,
-    defaultsV: 4,
+    defaultsV: 5,
     sheetTitle,
     headerNote: '',
     cabins: filled,
@@ -457,12 +477,13 @@ export function migrateDoc(doc: MenuDoc): MenuDoc {
             } else {
               if (v < 2 && /^snack/i.test(course.category)) course.include = false; // v2
               if (v < 3 && /^chocolate/i.test(course.category)) course.include = false; // v3
+              if (v < 5 && /bev|drink/i.test(course.category) && COLDISH_RE.test(course.category)) course.include = false; // v5
             }
           }
         }
       }
     }
   }
-  doc.defaultsV = 4;
+  doc.defaultsV = 5;
   return doc;
 }

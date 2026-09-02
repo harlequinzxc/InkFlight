@@ -142,7 +142,12 @@ function legContent(index: number): Json {
             selectionDetails: [
               { name: 'International Menu', code: 'ALC-International Menu', footnoteId: '', footnoteName: '', footnoteIconImagePath: '',
                 mealCourses: [
-                  { category: 'Main Course', code: 'MC', maxSequence: 1, items: [item('Braised Lamb Shank', 'Slow-braised with rosemary jus, creamy polenta and grilled vegetables')] }
+                  { category: 'Main Course', code: 'MC', maxSequence: 1, items: [
+                    item('Braised Lamb Shank', 'Slow-braised with rosemary jus, creamy polenta and grilled vegetables'),
+                    item('Braised Beef Ragout with Smoked Paprika', 'Tender slow-braised beef ragout enriched with smoked paprika, served with broccolini, carrots, and steamed new potatoes'),
+                    item('Seafood Hor Fun', 'Singapore-style wok-fried rice noodles with seafood')
+                  ] },
+                  { category: 'Cold Beverage', code: 'CB', maxSequence: 1, items: [item('Japanese Oolong Tea')] }
                 ]
               }
             ]
