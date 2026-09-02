@@ -408,6 +408,12 @@ body {
   padding: 9px 20px;
   font-size: 13px;
 }
+.error-code {
+  margin-top: 8px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+}
 
 .stale-ribbon {
   margin-top: 16px;

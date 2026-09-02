@@ -3,12 +3,12 @@
   "private": true,
   "version": "1.0.0",
   "description": "Inflight menu studio for Singapore Airlines cabin crew — pull live menus, edit, export print-ready A4/A6 images & Word docs.",
-  "type": "module",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
     "dev": "vite --host 0.0.0.0",
+    "dev:mock": "SQ_API_BASE=mock vite --host 0.0.0.0",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "icons": "node scripts/make-icons.mjs",

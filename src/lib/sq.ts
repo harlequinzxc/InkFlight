@@ -27,7 +27,7 @@ const BASE = process.env.SQ_API_BASE ?? 'https://cifp.auto.prod.c0.singaporeair.
 const SITE_ORIGIN = 'https://inflightmenu.singaporeair.com';
 const UA =
   'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36';
-const TIMEOUT_MS = 12_000;
+const TIMEOUT_MS = 8_000; // must sit WELL under the serverless function cap (10 s) so we always answer typed JSON, never a platform timeout page
 
 // ---------------------------------------------------------------------------
 // Typed errors

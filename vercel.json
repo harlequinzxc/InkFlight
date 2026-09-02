@@ -4,8 +4,11 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "functions": {
-    "api/*.ts": { "maxDuration": 30 }
+    "api/*.ts": { "maxDuration": 10 }
   },
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ],
   "headers": [
     {
       "source": "/sw.js",

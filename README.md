@@ -70,8 +70,16 @@ npm install
 npm run dev        # http://localhost:5173  (API included via dev middleware)
 ```
 
-To develop against a fake upstream, start `node scripts/mock-upstream.mjs`
-and run `SQ_API_BASE=http://127.0.0.1:4560 npm run dev`.
+To develop against the built-in fake upstream (no network at all):
+
+```bash
+npm run dev:mock   # SQ_API_BASE=mock — serves demo menus from src/lib/sq-mock.ts
+```
+
+Demo rules: flight `999` or any date beyond 8 days → “no flight found”; flight `200`
+→ only YCL/SCL cabins; YCL cabin → snack-bag sector; other flights → a two-sector
+menu. `scripts/mock-upstream.mjs` additionally simulates the raw *HTTP-level*
+upstream for contract tests.
 
 ```bash
 npm run build      # production build + PWA manifest/service worker
@@ -82,11 +90,35 @@ npm run preview    # serve the build
 
 1. Push this repo to GitHub.
 2. In Vercel: **Add New Project → Import** the repo.
-3. Framework preset **Vite** is auto-detected (`vercel.json` pins it).
+3. **Important — set the branch.** Development happens on
+   `arena/01a06145-inkflight`. Either set that as the production branch
+   (*Settings → Git → Production Branch*) or merge it into `main` first.
+   Deploying `main` before the merge ships an empty site.
+4. Framework preset **Vite** is auto-detected (`vercel.json` pins it).
    No environment variables are required (`SQ_API_BASE` is an optional
-   dev/test override only).
-4. Deploy — `/api/getcabin` and `/api/menu` become serverless functions and the
+   dev/test override only — never set it to `mock` in production).
+5. Deploy — `/api/getcabin` and `/api/menu` become serverless functions and the
    app installs as a PWA from the deployed URL.
+
+## Troubleshooting
+
+| Symptom | Cause & fix |
+|---|---|
+| *“…served a web page instead of the menu API”* / `ref: UPSTREAM_HTTP` | The deployment has **no `/api` functions** — you deployed a branch/commit without the `api/` folder, or the deploy predates the app. Redeploy the latest commit of the correct branch; check *Vercel → Deployments → Functions* lists `api/getcabin` & `api/menu`. |
+| *“…timed out at the server”* / `ref: UPSTREAM_TIMEOUT` | The upstream SQ service didn't answer within the serverless budget. Retry; if it persists from a given region, the SQ endpoint may be throttling datacenter IPs. |
+| *“Could not reach the menu service”* / `ref: UPSTREAM_NETWORK` | Server couldn't open a connection to SQ (offline sandbox, firewall, or SQ blocking). Retry; check Vercel function logs (*Deployments → Functions → Logs*). |
+| *“No flight found”* | Almost always the **date** — menus publish today → +8 days only. Also check the flight operates that day. |
+| PWA doesn't offer install | Serve over **HTTPS** (Vercel does), visit at least once, then: Chrome → install icon/menu · iOS Safari → Share → *Add to Home Screen*. |
+| Menu images missing in export | Dish photos are intentionally not embedded (keep exports lean & polite to SQ's CDN). |
+
+Quick deployment probe:
+
+```bash
+curl -X POST https://YOUR-APP.vercel.app/api/getcabin \
+  -H 'Content-Type: application/json' \
+  -d '{"flightNumber":"23","flightDate":"TODAY-YYYY-MM-DD"}'
+# expect: {"ok":true,"data":{"cabinClasses":[...]}} or a typed NOT_FOUND — never HTML
+```
 
 ## PWA install
 

@@ -127,6 +127,7 @@ export default function Search(props: SearchProps) {
               error.message
             )}
           </div>
+          <div className="error-code">ref: {error.code}</div>
           <button type="button" className="btn btn-ghost" onClick={props.onRetryCheck}>
             {error.code === 'NOT_FOUND' ? 'Try again' : 'Retry'}
           </button>
