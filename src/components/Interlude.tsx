@@ -20,6 +20,8 @@ export default function Interlude({ active }: InterludeProps) {
     return () => clearTimeout(t);
   }, [active]);
 
+  if (!active) return null;
+
   return (
     <div className="interlude" role="status" aria-live="polite">
       <div className="interlude-inner">
