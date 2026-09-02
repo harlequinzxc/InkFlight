@@ -1141,6 +1141,10 @@ body {
   display: flex;
   flex-direction: column;
   gap: calc(1.5mm * var(--sz));
+  text-transform: uppercase;
+}
+.cx-prot {
+  font-weight: 700;
 }
 .cx-leg {
   display: flex;

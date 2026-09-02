@@ -142,8 +142,9 @@ function legContent(index: number): Json {
       beverage: { language: { EN_UK: { categories: [
         { name: 'Champagne and Wine', categorySequence: 1, subcategories: [
           { name: 'Champagne', code: 'CH', footer: '', specialities: [{ items: [item('Charles Heidsieck Brut Réserve'), item('Louis Roederer Collection 244', 'Champagne, France, Champagne, located in the north of France, with its cool climate and famed chalky soil, makes the most famous sparkling wines in the world.')] }] },
-          { name: 'White', code: 'WH', footer: '', specialities: [{ items: [item('Cloudy Bay Sauvignon Blanc 2024', 'Marlborough, New Zealand'), item('Kistler Chardonnay 2023', 'Sonoma Coast')] }] },
-          { name: 'Red', code: 'RD', footer: '', specialities: [{ items: [item('Penfolds Bin 389 Cabernet Shiraz 2022', 'South Australia')] }] }
+          { name: 'White', code: 'WH', footer: '', specialities: [{ items: [item('Cloudy Bay Sauvignon Blanc 2024', 'Marlborough, New Zealand'), item('Kistler Chardonnay 2023', 'Sonoma Coast, Pale in colour, with lovely citrus and stone fruit')] }] },
+          { name: 'Red', code: 'RD', footer: '', specialities: [{ items: [item('Penfolds Bin 389 Cabernet Shiraz 2022', 'South Australia')] }] },
+          { name: 'Fortified Wine', code: 'FW', footer: '', specialities: [{ items: [item('Kopke 10 Years Old', 'Port, Portugal')] }] }
         ] },
         { name: 'Spirits and Liqueurs', categorySequence: 2, subcategories: [
           { name: 'Whisky', code: 'WK', footer: '', specialities: [{ items: [item('The Macallan Double Cask 12 Years'), item('Hibiki Japanese Harmony')] }] }
@@ -172,7 +173,8 @@ function legContent(index: number): Json {
         { mealServiceNumber: '1', mealServiceCode: 'SNCK', mealServiceName: 'Light Bites', mealServiceWriteUp: '',
           selectionDetails: [
             { name: 'International Menu', code: 'ALC-International Menu', footnoteId: '', footnoteName: '', footnoteIconImagePath: '',
-              mealCourses: [ { category: 'Snack', code: 'SN', maxSequence: 1, items: [item('Chicken Curry Puff'), item('Satay', 'Chicken and lamb skewers'), item('Ice Cream', 'Vanilla or chocolate')] } ] }
+              mealCourses: [ { category: 'Snack', code: 'SN', maxSequence: 1, items: [item('Chicken Curry Puff'), item('Satay', 'Chicken and lamb skewers'), item('Ice Cream', 'Vanilla or chocolate')] },
+                { category: 'Chocolate', code: 'CH', maxSequence: 1, items: [item('Chocolate')] } ] }
           ] }
       ]
     } } },

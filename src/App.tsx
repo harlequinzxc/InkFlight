@@ -389,7 +389,7 @@ export default function App() {
           size={prefs.size}
           fontScale={prefs.fontScale}
           greyscale={prefs.greyscale}
-          onLayout={(l) => setPrefs((p) => ({ ...p, layout: l }))}
+          onLayout={(l) => setPrefs((p) => ({ ...p, layout: l, size: l === 'compact' ? 'A6' : 'A4' }))}
           onSize={(s) => setPrefs((p) => ({ ...p, size: s }))}
           onFontScale={(f) => setPrefs((p) => ({ ...p, fontScale: f }))}
           onGreyscale={(g) => setPrefs((p) => ({ ...p, greyscale: g }))}

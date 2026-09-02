@@ -14,7 +14,7 @@
  */
 
 import type { BeverageCategory, LegSection, MenuDoc, SnackGroup } from '../lib/types';
-import { wineRegion } from '../lib/normalize';
+import { proteinRange, wineRegion } from '../lib/normalize';
 
 function PlaneGlyph({ className }: { className?: string }) {
   return (
@@ -272,6 +272,19 @@ function ElegantPaper({ doc }: { doc: MenuDoc }) {
 // COMPACT LAYOUT — crew one-look sheet
 // ===========================================================================
 
+/** Dish name with its protein word emphasised (compact one-look). */
+function DishText({ text }: { text: string }) {
+  const r = proteinRange(text);
+  if (!r) return <>{text}</>;
+  return (
+    <>
+      {text.slice(0, r[0])}
+      <b className="cx-prot">{text.slice(r[0], r[1])}</b>
+      {text.slice(r[1])}
+    </>
+  );
+}
+
 function CompactCourse({ label, names }: { label: string; names: string[] }) {
   if (names.length === 0) return null;
   // Flex row: continuation dishes live INSIDE the content box, so they align
@@ -280,10 +293,10 @@ function CompactCourse({ label, names }: { label: string; names: string[] }) {
     <div className="cx-course">
       <b className="cx-label">{label}:</b>
       <div className="cx-dishes">
-        {names[0]}
+        <DishText text={names[0]} />
         {names.slice(1).map((n, i) => (
           <div className="cx-more" key={i}>
-            {n}
+            <DishText text={n} />
           </div>
         ))}
       </div>

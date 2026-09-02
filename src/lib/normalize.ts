@@ -87,8 +87,8 @@ function mapCourse(raw: Json): Course {
   const category = str(raw.category) || 'Menu';
   return {
     id: uid('cs'),
-    // Hot Beverage + Snack courses hidden by default (toggle them back in the editor)
-    include: !/^hot\s?bev/i.test(category) && !/^snack/i.test(category),
+    // Hot Beverage + Snack + Chocolate courses hidden by default (toggle them back in the editor)
+    include: !/^hot\s?bev/i.test(category) && !/^snack/i.test(category) && !/^chocolate/i.test(category),
     category,
     choose: maxSeq > 1 ? maxSeq : 0,
     items
@@ -138,17 +138,50 @@ function mapMealService(raw: Json): MealService {
 
 // ---------- beverages -------------------------------------------------------
 
+/** Looks like a proper-noun place name: every content word capitalised
+ *  (small glue words like "of"/"de"/"the" allowed). Kills tasting fragments
+ *  such as "Pale in colour" or "with lovely citrus" without any hardcoding. */
+function looksProperPlace(c: string): boolean {
+  const SMALL = new Set(['of', 'the', 'in', 'on', 'de', 'del', 'della', 'di', 'da', 'du', 'la', 'le', 'les', 'el', 'al', 'and', 'der', 'den', 'val', 'do', 'auf', 'an']);
+  let sawUpper = false;
+  for (const w of c.split(/\s+/)) {
+    const bare = w.toLowerCase().replace(/[^a-zà-ÿ']/g, '');
+    if (bare && SMALL.has(bare)) continue;
+    if (!/^[A-ZÀ-Þ]/.test(w)) return false;
+    sawUpper = true;
+  }
+  return sawUpper;
+}
+
 /** SQ packs wine tasting notes as "Region, blurb…" (e.g. "Marlborough,
- *  New Zealand, Lawson's Dry Hills is a well-known producer…"). Keep only the
- *  short geographic prefix — never the marketing prose. */
+ *  New Zealand, This vibrant variety is celebrated…"). Keep only the leading
+ *  geographic chunks — proper-noun place words, no digits, no sentences —
+ *  and drop tasting-note fragments ("Pale in colour") wherever they appear. */
 export function wineRegion(desc: string): string {
   const out: string[] = [];
-  for (const chunk of desc.split(',')) {
-    const c = chunk.trim();
-    if (!c || out.length >= 2 || c.length > 28 || /\d/.test(c)) break;
+  for (const raw of desc.split(',')) {
+    let c = raw.trim();
+    const stop = c.search(/[.;]/); // sentence boundary ends the region list
+    if (stop >= 0) c = c.slice(0, stop).trim();
+    if (!c || c.length > 28 || /\d/.test(c) || !looksProperPlace(c)) break;
+    if (out.some((x) => x.toLowerCase() === c.toLowerCase())) break; // prose restarts on the region name
     out.push(c);
+    if (stop >= 0 || out.length >= 3) break;
   }
   return out.join(', ');
+}
+
+// ---------- protein highlight (compact one-look) ----------------------------
+
+/** Vocabulary of protein words — matched on word boundaries with the dish
+ *  name at render time, so it generalises to any future menu data. */
+const PROTEIN_RE =
+  /\b(beef|steak|wagyu|veal|chicken|duck|turkey|pork|bacon|ham|lamb|mutton|venison|quail|sausage|chorizo|salami|prosciutto|pepperoni|meatball|fish|salmon|tuna|cod|haddock|seabass|sea bass|barramundi|snapper|mackerel|sardine|trout|halibut|swordfish|prawn|prawns|shrimp|crab|lobster|scallop|mussel|clam|oyster|squid|calamari|octopus|anchovy|edamame|egg|omelette|tofu|tempeh|paneer|cheese|lentil|lentils|chickpea|beans?)\b/i;
+
+/** First protein word in a dish name → [start, end) or null. */
+export function proteinRange(text: string): [number, number] | null {
+  const m = PROTEIN_RE.exec(text);
+  return m ? [m.index, m.index + m[0].length] : null;
 }
 
 function mapBeverages(bevRoot: unknown): BeverageCategory[] {
@@ -172,7 +205,9 @@ function mapBeverages(bevRoot: unknown): BeverageCategory[] {
         }
       }
       if (items.length > 0) {
-        groups.push({ id: uid('bg'), include: true, name: subName || catName, items });
+        // Fortified Wine hidden by default (toggle it back in the editor)
+        const groupName = subName || catName;
+        groups.push({ id: uid('bg'), include: !/fortified/i.test(groupName), name: groupName, items });
       }
     }
     if (groups.length > 0) {
@@ -331,7 +366,7 @@ export function buildDoc(
     flightLabel: `SQ ${query.flightNumber}`,
     dateLabel: prettyDate(query.flightDate),
     dateISO: query.flightDate,
-    defaultsV: 2,
+    defaultsV: 3,
     sheetTitle,
     headerNote: '',
     cabins: filled,
@@ -349,6 +384,10 @@ export function migrateDoc(doc: MenuDoc): MenuDoc {
       if (leg.notesOn === undefined) leg.notesOn = false;
       for (const cat of leg.beverages) {
         if (cat.include === undefined) cat.include = /champagne/i.test(cat.name) && !/cold|soft|juice/i.test(cat.name);
+        for (const g of cat.groups) {
+          if (g.include === undefined) g.include = !/fortified/i.test(g.name);
+          else if (doc.defaultsV !== 3 && /fortified/i.test(g.name)) g.include = false; // new in v3
+        }
       }
       for (const group of leg.snacks) {
         if (group.include === undefined) group.include = false;
@@ -357,16 +396,16 @@ export function migrateDoc(doc: MenuDoc): MenuDoc {
         for (const sel of meal.selections) {
           for (const course of sel.courses) {
             if (course.include === undefined) {
-              course.include = !/^hot\s?bev/i.test(course.category) && !/^snack/i.test(course.category);
-            } else if (doc.defaultsV !== 2 && /^snack/i.test(course.category)) {
-              // pre-v2 docs persisted course-level snacks as visible — apply the new default
-              course.include = false;
+              course.include = !/^hot\s?bev/i.test(course.category) && !/^snack/i.test(course.category) && !/^chocolate/i.test(course.category);
+            } else {
+              if (doc.defaultsV === undefined && /^snack/i.test(course.category)) course.include = false; // v2
+              if (doc.defaultsV !== 3 && /^chocolate/i.test(course.category)) course.include = false; // v3
             }
           }
         }
       }
     }
   }
-  doc.defaultsV = 2;
+  doc.defaultsV = 3;
   return doc;
 }

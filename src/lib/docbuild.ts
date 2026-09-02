@@ -14,7 +14,7 @@ import {
   type ISectionOptions
 } from 'docx';
 import type { LegSection, MenuDoc } from './types';
-import { wineRegion } from './normalize';
+import { proteinRange, wineRegion } from './normalize';
 
 const NAVY = '13294B';
 const GOLD = '9A7B2D';
@@ -214,6 +214,17 @@ function elegantChildren(doc: MenuDoc): Paragraph[] {
 // Compact — crew one-look sheet (header line + COURSE: NAMES)
 // ---------------------------------------------------------------------------
 
+/** Compact dish text: the protein word stands out (bold) for one-look scanning. */
+function dishRuns(text: string, size: number): TextRun[] {
+  const r = proteinRange(text);
+  if (!r) return [new TextRun({ text, font: SANS, size, color: INK })];
+  const runs: TextRun[] = [];
+  if (r[0] > 0) runs.push(new TextRun({ text: text.slice(0, r[0]), font: SANS, size, color: INK }));
+  runs.push(new TextRun({ text: text.slice(r[0], r[1]), font: SANS, size, bold: true, color: INK }));
+  if (r[1] < text.length) runs.push(new TextRun({ text: text.slice(r[1]), font: SANS, size, color: INK }));
+  return runs;
+}
+
 function compactChildren(doc: MenuDoc): Paragraph[] {
   const out: Paragraph[] = [];
   const p = (opts: IParagraphOptions): void => {
@@ -241,9 +252,9 @@ function compactChildren(doc: MenuDoc): Paragraph[] {
             const hang = Math.min(2600, Math.max(400, Math.round(label.length * 105)));
             items.forEach((name, idx) => {
               if (idx === 0) {
-                p({ indent: { left: hang, hanging: hang }, spacing: { after: 8 }, children: [new TextRun({ text: `${label} `, font: SANS, size: 19, bold: true, color: INK }), new TextRun({ text: name, font: SANS, size: 19, color: INK })] });
+                p({ indent: { left: hang, hanging: hang }, spacing: { after: 8 }, children: [new TextRun({ text: `${label} `, font: SANS, size: 19, bold: true, color: INK }), ...dishRuns(name, 19)] });
               } else {
-                p({ indent: { left: hang }, spacing: { after: 8 }, children: [new TextRun({ text: name, font: SANS, size: 19, color: INK })] });
+                p({ indent: { left: hang }, spacing: { after: 8 }, children: dishRuns(name, 19) });
               }
             });
           }
@@ -267,7 +278,7 @@ function compactChildren(doc: MenuDoc): Paragraph[] {
         }
       }
       for (const line of snackLines(leg)) {
-        p({ spacing: { after: 8 }, children: [new TextRun({ text: `${shortCourseLabel(line.head.split(' — ').pop() ?? line.head)}: `, font: SANS, size: 19, bold: true, color: INK }), new TextRun({ text: line.body.toUpperCase(), font: SANS, size: 19, color: INK })] });
+        p({ spacing: { after: 8 }, children: [new TextRun({ text: `${shortCourseLabel(line.head.split(' — ').pop() ?? line.head)}: `, font: SANS, size: 19, bold: true, color: INK }), ...dishRuns(line.body.toUpperCase(), 19)] });
       }
       if (leg.amenitiesOn && leg.amenities.length > 0) {
         p({ spacing: { after: 8 }, children: [new TextRun({ text: 'AMENITY: ', font: SANS, size: 19, bold: true, color: INK }), new TextRun({ text: leg.amenities.join(', ').toUpperCase(), font: SANS, size: 19, color: INK })] });
@@ -280,7 +291,7 @@ function compactChildren(doc: MenuDoc): Paragraph[] {
     }
   }
 
-  p({ spacing: { before: 80 }, border: { top: { style: BorderStyle.SINGLE, size: 4, color: GOLD_SOFT, space: 4 } }, children: [new TextRun({ text: doc.attribution, font: SANS, size: 11, color: GREY })] });
+  p({ spacing: { before: 80 }, border: { top: { style: BorderStyle.SINGLE, size: 4, color: GOLD_SOFT, space: 4 } }, children: [new TextRun({ text: doc.attribution.toUpperCase(), font: SANS, size: 11, color: GREY })] });
   return out;
 }
 
