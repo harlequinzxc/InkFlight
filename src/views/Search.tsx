@@ -162,7 +162,33 @@ export default function Search(props: SearchProps) {
       <div ref={cabinsRef}>
         {checkState === 'ok' && (
           <div className="cabins-wrap">
-            {/* STEP: sectors — only for multi-sector flights, only after a cabin is picked */}
+            <div>
+              <div className="pills-label" aria-live="polite">
+                Cabins available
+              </div>
+              <div className="cabin-cards">
+                {cabinOptions.map((c, i) => {
+                  const on = selectedCabins.includes(c.code);
+                  return (
+                    <button
+                      type="button"
+                      key={c.code}
+                      className={`cabin-card card-in${on ? ' on' : ''}${fetching ? ' busy' : ''}`}
+                      style={{ animationDelay: `${i * 70}ms` }}
+                      onClick={() => props.onToggleCabin(c.code)}
+                      disabled={fetching}
+                      aria-pressed={on}
+                    >
+                      <span className="card-code">{c.code}</span>
+                      <span className="card-short">{c.short}</span>
+                      <span className="card-tick">{on ? '✓' : ''}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* STEP: sectors — multi-sector flights only, AFTER a cabin is picked */}
             {showSectors && availableSectors && (
               <div className="sectors-wrap card-in">
                 <div className="pills-label">Sectors available</div>
@@ -188,32 +214,6 @@ export default function Search(props: SearchProps) {
                 </div>
               </div>
             )}
-
-            <div className={showSectors ? 'cabins-after-sectors' : ''}>
-              <div className="pills-label" aria-live="polite">
-                Cabins available
-              </div>
-              <div className="cabin-cards">
-                {cabinOptions.map((c, i) => {
-                  const on = selectedCabins.includes(c.code);
-                  return (
-                    <button
-                      type="button"
-                      key={c.code}
-                      className={`cabin-card card-in${on ? ' on' : ''}${fetching ? ' busy' : ''}`}
-                      style={{ animationDelay: `${i * 70 + (showSectors ? 120 : 0)}ms` }}
-                      onClick={() => props.onToggleCabin(c.code)}
-                      disabled={fetching}
-                      aria-pressed={on}
-                    >
-                      <span className="card-code">{c.code}</span>
-                      <span className="card-short">{c.short}</span>
-                      <span className="card-tick">{on ? '✓' : ''}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
 
             {readyToFetch && (
               <div className="fetch-wrap">

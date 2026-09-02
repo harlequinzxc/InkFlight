@@ -192,30 +192,17 @@ body {
   text-indent: 0.5em;
   color: var(--gold);
 }
-.landing-tag {
-  margin-top: 10px;
-  font-size: 10.5px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-}
 .landing-headline {
   font-family: var(--font-serif);
   font-weight: 600;
   font-size: 46px;
   line-height: 1.06;
   color: var(--cream);
-  margin: 28px 0 0;
-}
-.landing-sub {
-  font-size: 14px;
-  line-height: 1.7;
-  color: var(--text-lo);
-  max-width: 38ch;
-  margin: 16px 0 32px;
+  margin: 30px 0 0;
 }
 .landing-cta {
   min-width: 190px;
+  margin-top: 34px;
 }
 .landing-resume {
   margin-top: 20px;
@@ -276,6 +263,9 @@ body {
   line-height: 1.6;
 }
 
+.field {
+  margin-top: 32px;
+}
 .field-label {
   display: block;
   font-size: 11px;
@@ -283,7 +273,7 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.18em;
   color: var(--gold);
-  margin-bottom: 6px;
+  margin-bottom: 10px;
 }
 .flight-input {
   width: 100%;
@@ -360,9 +350,7 @@ body {
 }
 
 .sectors-wrap {
-  margin-bottom: 24px;
-}
-.cabins-after-sectors {
+  margin-top: 24px;
   padding-top: 22px;
   border-top: 1px solid rgba(255, 255, 255, 0.07);
 }
