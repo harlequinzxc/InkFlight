@@ -10,7 +10,7 @@
     "dev": "vite --host 0.0.0.0",
     "dev:mock": "SQ_API_BASE=mock vite --host 0.0.0.0",
     "build": "vite build",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p api --noEmit",
     "icons": "node scripts/make-icons.mjs",
     "preview": "vite preview --host 0.0.0.0"
   },

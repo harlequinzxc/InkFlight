@@ -18,9 +18,14 @@ export type ApiKind = 'cabins' | 'menu';
 /** Synthesize a body object from the query string for GET requests. */
 function bodyFromUrl(req: IncomingMessage): Record<string, unknown> {
   const url = new URL(req.url ?? '/', 'http://local');
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of url.searchParams.entries()) out[k] = v;
-  return out;
+  const q: Record<string, string> = {};
+  for (const [k, v] of url.searchParams.entries()) q[k] = v;
+  // normalize the GET names onto the canonical body keys used by the handlers
+  return {
+    flightNumber: q.flight ?? q.flightNumber,
+    flightDate: q.date ?? q.flightDate,
+    cabinClass: q.cabin ?? q.cabinClass
+  };
 }
 
 export async function handleApiRequest(
