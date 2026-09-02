@@ -27,6 +27,20 @@ export default function ExportSheet({ open, onClose, doc, layout, size, paperRef
       return;
     }
     setBusy('image');
+    // Neutralise the preview's scale wrapper while rasterising, otherwise the
+    // capture inherits the on-screen transform and comes out tiny/clipped.
+    const scaleWrap = node.closest('.paper-scale') as HTMLElement | null;
+    const slot = node.closest('.paper-slot') as HTMLElement | null;
+    const prev = {
+      transform: scaleWrap?.style.transform ?? '',
+      w: slot?.style.width ?? '',
+      h: slot?.style.height ?? ''
+    };
+    if (scaleWrap) scaleWrap.style.transform = 'none';
+    if (slot) {
+      slot.style.width = 'auto';
+      slot.style.height = 'auto';
+    }
     try {
       await exportPaperImage(node, {
         format,
@@ -37,6 +51,11 @@ export default function ExportSheet({ open, onClose, doc, layout, size, paperRef
     } catch (err) {
       onToast(err instanceof Error ? err.message : 'Export failed.', 'err');
     } finally {
+      if (scaleWrap) scaleWrap.style.transform = prev.transform;
+      if (slot) {
+        slot.style.width = prev.w;
+        slot.style.height = prev.h;
+      }
       setBusy(null);
     }
   };
